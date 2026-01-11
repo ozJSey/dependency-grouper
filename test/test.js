@@ -3,7 +3,14 @@
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { generateDependencies, mergeDepGroups, loadDepGroups } = require('../dist/index.js');
+const { 
+  generateDependencies, 
+  mergeDepGroups, 
+  loadDepGroups,
+  findWorkspaceRoot,
+  findPackageJsonFiles,
+  syncFromPackages
+} = require('../dist/index.js');
 
 const TEST_DIR = path.join(__dirname, 'fixtures');
 
@@ -147,20 +154,356 @@ function testMissingGroup() {
   console.log('✓ Missing group handled correctly');
 }
 
+function testFindWorkspaceRoot() {
+  console.log('Testing findWorkspaceRoot...');
+  
+  // Test 1: Find root with .dep-groups.yaml
+  const root1 = findWorkspaceRoot(path.join(TEST_DIR, 'packages', 'test-app'));
+  assert.strictEqual(root1, TEST_DIR, 'Should find root with .dep-groups.yaml');
+  
+  // Test 2: Create pnpm-workspace.yaml test
+  const pnpmTestDir = path.join(TEST_DIR, 'pnpm-test');
+  fs.mkdirSync(pnpmTestDir, { recursive: true });
+  fs.writeFileSync(path.join(pnpmTestDir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"');
+  const root2 = findWorkspaceRoot(pnpmTestDir);
+  assert.strictEqual(root2, pnpmTestDir, 'Should find root with pnpm-workspace.yaml');
+  
+  // Test 3: npm workspaces in package.json
+  const npmTestDir = path.join(TEST_DIR, 'npm-test');
+  fs.mkdirSync(npmTestDir, { recursive: true });
+  fs.writeFileSync(path.join(npmTestDir, 'package.json'), JSON.stringify({
+    name: 'test-workspace',
+    workspaces: ['packages/*']
+  }));
+  const root3 = findWorkspaceRoot(npmTestDir);
+  assert.strictEqual(root3, npmTestDir, 'Should find root with npm workspaces');
+  
+  console.log('✓ findWorkspaceRoot works correctly');
+}
+
+function testFindPackageJsonFiles() {
+  console.log('Testing findPackageJsonFiles...');
+  
+  // Create nested structure
+  const nestedDir = path.join(TEST_DIR, 'nested');
+  fs.mkdirSync(path.join(nestedDir, 'deep', 'deeper'), { recursive: true });
+  fs.mkdirSync(path.join(nestedDir, 'node_modules', 'some-pkg'), { recursive: true });
+  
+  fs.writeFileSync(path.join(nestedDir, 'package.json'), '{}');
+  fs.writeFileSync(path.join(nestedDir, 'deep', 'package.json'), '{}');
+  fs.writeFileSync(path.join(nestedDir, 'deep', 'deeper', 'package.json'), '{}');
+  fs.writeFileSync(path.join(nestedDir, 'node_modules', 'some-pkg', 'package.json'), '{}');
+  
+  const files = findPackageJsonFiles(nestedDir);
+  
+  // Should find 3 files (not the one in node_modules)
+  assert.strictEqual(files.length, 3, 'Should find 3 package.json files');
+  assert.ok(files.every(f => !f.includes('node_modules')), 'Should skip node_modules');
+  
+  console.log('✓ findPackageJsonFiles works correctly');
+}
+
+function testSyncFromPackages_NewFile() {
+  console.log('Testing syncFromPackages (new file)...');
+  
+  const syncTestDir = path.join(TEST_DIR, 'sync-new');
+  fs.mkdirSync(path.join(syncTestDir, 'packages', 'app1'), { recursive: true });
+  
+  // Create package with empty depGroups
+  fs.writeFileSync(path.join(syncTestDir, 'package.json'), JSON.stringify({
+    name: 'root',
+    depGroups: []
+  }));
+  
+  fs.writeFileSync(path.join(syncTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: [],
+    dependencies: {
+      react: '^18.2.0',
+      axios: '^1.0.0'
+    },
+    devDependencies: {
+      jest: '^29.0.0'
+    }
+  }));
+  
+  syncFromPackages(syncTestDir);
+  
+  // Check .dep-groups.yaml was created
+  assert.ok(fs.existsSync(path.join(syncTestDir, '.dep-groups.yaml')), 'Should create .dep-groups.yaml');
+  
+  const depGroups = loadDepGroups(syncTestDir);
+  
+  // Root should get 'root' group, app1 should get 'common' group
+  assert.ok(depGroups.groups.common, 'Should have common group');
+  assert.strictEqual(depGroups.groups.common.dependencies.react, '^18.2.0', 'Should capture react');
+  assert.strictEqual(depGroups.groups.common.dependencies.axios, '^1.0.0', 'Should capture axios');
+  assert.strictEqual(depGroups.groups.common.devDependencies.jest, '^29.0.0', 'Should capture jest');
+  
+  console.log('✓ syncFromPackages (new file) works correctly');
+}
+
+function testSyncFromPackages_ExistingFile() {
+  console.log('Testing syncFromPackages (existing file)...');
+  
+  const syncTestDir = path.join(TEST_DIR, 'sync-existing');
+  fs.mkdirSync(path.join(syncTestDir, 'packages', 'app1'), { recursive: true });
+  
+  // Create existing .dep-groups.yaml
+  fs.writeFileSync(path.join(syncTestDir, '.dep-groups.yaml'), `groups:
+  common:
+    dependencies:
+      react: "^18.2.0"
+`);
+  
+  // Create package with depGroups reference
+  fs.writeFileSync(path.join(syncTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: ['common'],
+    dependencies: {
+      react: '^18.2.0',
+      axios: '^1.0.0'  // New dependency
+    }
+  }));
+  
+  syncFromPackages(syncTestDir);
+  
+  const depGroups = loadDepGroups(syncTestDir);
+  
+  // Should keep react and add axios
+  assert.strictEqual(depGroups.groups.common.dependencies.react, '^18.2.0', 'Should keep react');
+  assert.strictEqual(depGroups.groups.common.dependencies.axios, '^1.0.0', 'Should add axios');
+  
+  console.log('✓ syncFromPackages (existing file) works correctly');
+}
+
+function testSyncFromPackages_RootVsCommon() {
+  console.log('Testing syncFromPackages (root vs common groups)...');
+  
+  const syncTestDir = path.join(TEST_DIR, 'sync-root-common');
+  fs.mkdirSync(path.join(syncTestDir, 'packages', 'app1'), { recursive: true });
+  
+  // Root package with empty depGroups
+  fs.writeFileSync(path.join(syncTestDir, 'package.json'), JSON.stringify({
+    name: 'monorepo-root',
+    depGroups: [],
+    devDependencies: {
+      typescript: '^5.0.0',
+      eslint: '^8.0.0'
+    }
+  }));
+  
+  // Sub-package with empty depGroups
+  fs.writeFileSync(path.join(syncTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: [],
+    dependencies: {
+      react: '^18.2.0'
+    }
+  }));
+  
+  syncFromPackages(syncTestDir);
+  
+  const depGroups = loadDepGroups(syncTestDir);
+  
+  // Root deps should be in 'root' group
+  assert.ok(depGroups.groups.root, 'Should have root group');
+  assert.strictEqual(depGroups.groups.root.devDependencies.typescript, '^5.0.0', 'Root deps in root group');
+  assert.strictEqual(depGroups.groups.root.devDependencies.eslint, '^8.0.0', 'Root deps in root group');
+  
+  // Sub-package deps should be in 'common' group
+  assert.ok(depGroups.groups.common, 'Should have common group');
+  assert.strictEqual(depGroups.groups.common.dependencies.react, '^18.2.0', 'Sub-package deps in common group');
+  
+  console.log('✓ syncFromPackages (root vs common) works correctly');
+}
+
+function testAutoPopulateDepGroups() {
+  console.log('Testing auto-populate depGroups...');
+  
+  const autoPopTestDir = path.join(TEST_DIR, 'auto-populate');
+  fs.mkdirSync(path.join(autoPopTestDir, 'packages', 'app1'), { recursive: true });
+  
+  // Create .dep-groups.yaml
+  fs.writeFileSync(path.join(autoPopTestDir, '.dep-groups.yaml'), `groups:
+  root:
+    devDependencies:
+      typescript: "^5.0.0"
+  common:
+    dependencies:
+      react: "^18.2.0"
+`);
+  
+  // Root with empty depGroups
+  fs.writeFileSync(path.join(autoPopTestDir, 'package.json'), JSON.stringify({
+    name: 'root',
+    depGroups: []
+  }));
+  
+  // Sub-package with empty depGroups
+  fs.writeFileSync(path.join(autoPopTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: []
+  }));
+  
+  generateDependencies(autoPopTestDir);
+  
+  // Check root was populated with ["root"]
+  const rootPkg = JSON.parse(fs.readFileSync(path.join(autoPopTestDir, 'package.json'), 'utf-8'));
+  assert.deepStrictEqual(rootPkg.depGroups, ['root'], 'Root should get ["root"]');
+  assert.strictEqual(rootPkg.devDependencies.typescript, '^5.0.0', 'Root should have typescript');
+  
+  // Check sub-package was populated with ["common"]
+  const app1Pkg = JSON.parse(fs.readFileSync(path.join(autoPopTestDir, 'packages', 'app1', 'package.json'), 'utf-8'));
+  assert.deepStrictEqual(app1Pkg.depGroups, ['common'], 'Sub-package should get ["common"]');
+  assert.strictEqual(app1Pkg.dependencies.react, '^18.2.0', 'Sub-package should have react');
+  
+  console.log('✓ Auto-populate depGroups works correctly');
+}
+
+function testPreinstallScriptInjection() {
+  console.log('Testing preinstall script injection...');
+  
+  const scriptTestDir = path.join(TEST_DIR, 'script-inject');
+  fs.mkdirSync(path.join(scriptTestDir, 'packages', 'app1'), { recursive: true });
+  
+  // Create .dep-groups.yaml
+  fs.writeFileSync(path.join(scriptTestDir, '.dep-groups.yaml'), `groups:
+  common:
+    dependencies:
+      react: "^18.2.0"
+`);
+  
+  // Test 1: No scripts object
+  fs.writeFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: ['common']
+  }));
+  
+  generateDependencies(scriptTestDir);
+  
+  const pkg1 = JSON.parse(fs.readFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), 'utf-8'));
+  assert.ok(pkg1.scripts, 'Should create scripts object');
+  assert.strictEqual(pkg1.scripts.preinstall, 'dependency-grouper generate', 'Should inject preinstall');
+  
+  // Test 2: Existing preinstall (different command)
+  fs.writeFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: ['common'],
+    scripts: {
+      preinstall: 'echo "hello"'
+    }
+  }));
+  
+  generateDependencies(scriptTestDir);
+  
+  const pkg2 = JSON.parse(fs.readFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), 'utf-8'));
+  assert.strictEqual(pkg2.scripts.preinstall, 'echo "hello" && dependency-grouper generate', 'Should append to existing');
+  
+  // Test 3: Preinstall already has dependency-grouper
+  fs.writeFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: ['common'],
+    scripts: {
+      preinstall: 'dependency-grouper generate'
+    }
+  }));
+  
+  generateDependencies(scriptTestDir);
+  
+  const pkg3 = JSON.parse(fs.readFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), 'utf-8'));
+  assert.strictEqual(pkg3.scripts.preinstall, 'dependency-grouper generate', 'Should not duplicate');
+  
+  console.log('✓ Preinstall script injection works correctly');
+}
+
+function testMultipleGroups() {
+  console.log('Testing multiple groups per package...');
+  
+  const multiGroupDir = path.join(TEST_DIR, 'multi-groups');
+  fs.mkdirSync(path.join(multiGroupDir, 'packages', 'app1'), { recursive: true });
+  
+  fs.writeFileSync(path.join(multiGroupDir, '.dep-groups.yaml'), `groups:
+  react:
+    dependencies:
+      react: "^18.2.0"
+      react-dom: "^18.2.0"
+  utils:
+    dependencies:
+      axios: "^1.0.0"
+      lodash: "^4.17.21"
+  testing:
+    devDependencies:
+      jest: "^29.0.0"
+`);
+  
+  fs.writeFileSync(path.join(multiGroupDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: ['react', 'utils', 'testing']
+  }));
+  
+  generateDependencies(multiGroupDir);
+  
+  const pkg = JSON.parse(fs.readFileSync(path.join(multiGroupDir, 'packages', 'app1', 'package.json'), 'utf-8'));
+  
+  // Should have all dependencies from all 3 groups
+  assert.strictEqual(pkg.dependencies.react, '^18.2.0', 'Should have react from react group');
+  assert.strictEqual(pkg.dependencies['react-dom'], '^18.2.0', 'Should have react-dom from react group');
+  assert.strictEqual(pkg.dependencies.axios, '^1.0.0', 'Should have axios from utils group');
+  assert.strictEqual(pkg.dependencies.lodash, '^4.17.21', 'Should have lodash from utils group');
+  assert.strictEqual(pkg.devDependencies.jest, '^29.0.0', 'Should have jest from testing group');
+  
+  console.log('✓ Multiple groups work correctly');
+}
+
+function testEmptyDepGroups() {
+  console.log('Testing empty depGroups array...');
+  
+  const packageJson = {
+    name: 'test',
+    depGroups: [],
+    dependencies: { axios: '^1.0.0' }
+  };
+  
+  const depGroups = { groups: { common: { dependencies: { react: '^18.2.0' } } } };
+  
+  // Should not merge anything for empty depGroups
+  const merged = mergeDepGroups(packageJson, depGroups);
+  assert.deepStrictEqual(merged.dependencies, { axios: '^1.0.0' }, 'Should keep only original deps');
+  
+  console.log('✓ Empty depGroups handled correctly');
+}
+
 function runTests() {
-  console.log('\n=== Running pnpm-dep-grouper tests ===\n');
+  console.log('\n=== Running dependency-grouper tests ===\n');
   
   try {
     setup();
     
+    // Core functionality tests
     testLoadDepGroups();
     testMergeDepGroups();
     testGenerateDependencies();
     testMissingGroup();
+    testEmptyDepGroups();
+    testMultipleGroups();
+    
+    // Workspace detection tests
+    testFindWorkspaceRoot();
+    testFindPackageJsonFiles();
+    
+    // Sync tests
+    testSyncFromPackages_NewFile();
+    testSyncFromPackages_ExistingFile();
+    testSyncFromPackages_RootVsCommon();
+    
+    // Feature tests
+    testAutoPopulateDepGroups();
+    testPreinstallScriptInjection();
     
     cleanup();
     
-    console.log('\n✓ All tests passed!\n');
+    console.log('\n✓ All 15 tests passed!\n');
     process.exit(0);
   } catch (error) {
     console.error('\n✗ Test failed:', error.message);
