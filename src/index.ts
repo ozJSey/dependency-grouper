@@ -81,8 +81,9 @@ export function syncFromPackages(rootDir: string): void {
   const configPath = path.join(rootDir, '.dep-groups.yaml');
   
   // Load existing groups or create empty structure
+  const fileExists = fs.existsSync(configPath);
   let depGroups: DepGroups;
-  if (fs.existsSync(configPath)) {
+  if (fileExists) {
     const content = fs.readFileSync(configPath, 'utf-8');
     depGroups = yaml.parse(content) as DepGroups;
   } else {
@@ -140,10 +141,21 @@ export function syncFromPackages(rootDir: string): void {
     }
   }
   
-  if (updated) {
-    // Write back to .dep-groups.yaml
+  // If no groups exist, create a default "common" group
+  if (Object.keys(depGroups.groups).length === 0) {
+    depGroups.groups.common = {};
+    updated = true;
+    console.log('  + Created default "common" group');
+  }
+  
+  if (updated || !fileExists) {
+    // Write back to .dep-groups.yaml (create if new, or update if changed)
     fs.writeFileSync(configPath, yaml.stringify(depGroups), 'utf-8');
-    console.log(`\n✓ Updated .dep-groups.yaml\n`);
+    if (fileExists) {
+      console.log(`\n✓ Updated .dep-groups.yaml\n`);
+    } else {
+      console.log(`\n✓ Created .dep-groups.yaml\n`);
+    }
   } else {
     console.log('✓ .dep-groups.yaml is up to date\n');
   }
