@@ -1,0 +1,53 @@
+{
+  "name": "dependency-grouper",
+  "version": "0.1.0",
+  "description": "Group and reuse dependency sets across monorepo projects (pnpm, npm, yarn)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "dependency-grouper": "dist/cli.js",
+    "dep-grouper": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "npm run build && node test/test.js",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ozgurseyidoglu/dependency-grouper.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ozgurseyidoglu/dependency-grouper/issues"
+  },
+  "homepage": "https://github.com/ozgurseyidoglu/dependency-grouper#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "pnpm",
+    "npm",
+    "yarn",
+    "dependencies",
+    "workspace",
+    "workspaces",
+    "monorepo",
+    "package-manager",
+    "dependency-management"
+  ],
+  "author": "ozjsey",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "sort-package-json": "^2.10.0",
+    "yaml": "^2.3.4"
+  }
+}
