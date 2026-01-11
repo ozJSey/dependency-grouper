@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'yaml';
 import sortPackageJson from 'sort-package-json';
-import { DepGroups, PackageJson, DependencySet } from './types';
+import { DepGroups, PackageJson } from './types';
 
 export function findWorkspaceRoot(startDir: string = process.cwd()): string | null {
   let currentDir = startDir;
@@ -261,13 +261,37 @@ export function generateDependencies(rootDir?: string): void {
     const content = fs.readFileSync(pkgPath, 'utf-8');
     const packageJson: PackageJson = JSON.parse(content);
     
+    // Check if this is the root package.json
+    const isRootPkg = path.dirname(pkgPath) === workspaceRoot;
+    
+    // Auto-populate depGroups if it's an empty array
+    if (packageJson.depGroups !== undefined && Array.isArray(packageJson.depGroups) && packageJson.depGroups.length === 0) {
+      packageJson.depGroups = [isRootPkg ? 'root' : 'common'];
+      console.log(`Auto-populated depGroups for ${packageJson.name || path.basename(path.dirname(pkgPath))} → [${packageJson.depGroups.join(', ')}]`);
+    }
+    
+    // Skip packages without depGroups
     if (!packageJson.depGroups || packageJson.depGroups.length === 0) {
       continue;
     }
     
-    console.log(`Processing ${packageJson.name}...`);
+    console.log(`Processing ${packageJson.name || path.basename(path.dirname(pkgPath))}...`);
     
     const merged = mergeDepGroups(packageJson, depGroups);
+    
+    // Auto-inject preinstall script if missing or append to existing
+    const generateCmd = 'dependency-grouper generate';
+    if (!merged.scripts) {
+      merged.scripts = {};
+    }
+    
+    if (!merged.scripts.preinstall) {
+      merged.scripts.preinstall = generateCmd;
+      console.log(`  + Added preinstall script`);
+    } else if (!merged.scripts.preinstall.includes('dependency-grouper')) {
+      merged.scripts.preinstall = `${merged.scripts.preinstall} && ${generateCmd}`;
+      console.log(`  + Appended to existing preinstall script`);
+    }
     
     // Sort package.json keys using sort-package-json
     const sorted = sortPackageJson(merged);

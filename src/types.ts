@@ -1,4 +1,4 @@
-export interface DependencySet {
+interface DependencySet {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }

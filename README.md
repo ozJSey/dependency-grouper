@@ -88,26 +88,43 @@ Run `dependency-grouper generate` and it merges the groups with automatic sortin
 
 ### Quick Start (Existing Monorepo)
 
-If you already have a monorepo with dependencies, bootstrap from existing packages:
+Bootstrap from your existing monorepo dependencies:
 
 ```bash
 # 1. Install
 pnpm add -D dependency-grouper
 
-# 2. Add depGroups to your packages
-# Edit packages/your-app/package.json:
+# 2. Add empty depGroups array to all package.json files
+# Root package.json:
 {
-  "depGroups": ["yourProjectNames(more than 1 will add to all, later you can decide their fate)"]  // ← Add this
+  "depGroups": []  // ← Will become ["root"]
 }
 
-# 3. Generate .dep-groups.yaml from existing dependencies
-npx dependency-grouper sync
-# This creates .dep-groups.yaml with all dependencies from packages with depGroups
+# Sub-package package.json files:
+{
+  "depGroups": []  // ← Will become ["common"]
+}
 
-# 4. Review and organize .dep-groups.yaml
+# 3. Run initial generate - this does EVERYTHING automatically:
+npx dependency-grouper generate
+```
+
+**What initial `generate` does:**
+1. **Scans** all package.json files and collects existing dependencies
+2. **Creates** `.dep-groups.yaml` with separate "root" and "common" groups
+3. **Auto-populates** empty `depGroups: []` arrays:
+   - Root package.json → `["root"]`
+   - Sub-packages → `["common"]`
+4. **Merges** group dependencies back into all package.json files
+5. **Injects** `"preinstall": "dependency-grouper generate"` script (or appends to existing)
+
+After this one command, everything is set up! Future `pnpm install` will auto-sync.
+
+```bash
+# 4. (Optional) Review and reorganize .dep-groups.yaml
 nano .dep-groups.yaml
 
-# 5. Generate to sync across all packages
+# 5. Run generate again if you changed groups
 npx dependency-grouper generate
 ```
 
