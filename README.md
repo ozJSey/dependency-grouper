@@ -84,227 +84,221 @@ Run `dependency-grouper generate` and it merges the groups with automatic sortin
 }
 ```
 
-## Usage
+## Quick Start
 
-### Quick Start (Existing Monorepo)
+### Option A: Bootstrap from Existing Monorepo (Recommended)
 
-Bootstrap from your existing monorepo dependencies:
+If you already have a monorepo with dependencies:
 
 ```bash
-# 1. Install
+# 1. Install at workspace root
 pnpm add -D dependency-grouper
 
-# 2. Add empty depGroups array to all package.json files
-# Root package.json:
-{
-  "depGroups": []  // ← Will become ["root"]
-}
+# 2. Add "depGroups": [] to ALL package.json files
+# ├── package.json          → "depGroups": []
+# └── packages/
+#     ├── app1/package.json → "depGroups": []
+#     └── app2/package.json → "depGroups": []
 
-# Sub-package package.json files:
-{
-  "depGroups": []  // ← Will become ["common"]
-}
-
-# 3. Run initial generate - this does EVERYTHING automatically:
+# 3. Run generate (does everything automatically):
 npx dependency-grouper generate
 ```
 
-**What initial `generate` does:**
-1. **Scans** all package.json files and collects existing dependencies
-2. **Creates** `.dep-groups.yaml` with separate "root" and "common" groups
-3. **Auto-populates** empty `depGroups: []` arrays:
-   - Root package.json → `["root"]`
-   - Sub-packages → `["common"]`
-4. **Merges** group dependencies back into all package.json files
-5. **Injects** `"preinstall": "dependency-grouper generate"` script (or appends to existing)
+**What just happened:**
+1. ✅ Created `.dep-groups.yaml` with all your dependencies organized
+2. ✅ Root dependencies → `root` group, sub-packages → `common` group  
+3. ✅ Auto-populated `depGroups: ["root"]` or `["common"]` in all files
+4. ✅ Injected `preinstall` script for automatic sync
 
-After this one command, everything is set up! Future `pnpm install` will auto-sync.
-
+**Next steps:**
 ```bash
-# 4. (Optional) Review and reorganize .dep-groups.yaml
-nano .dep-groups.yaml
+# 4. Review and reorganize the generated .dep-groups.yaml
+code .dep-groups.yaml
 
-# 5. Run generate again if you changed groups
+# Example: Split 'common' into specific groups:
+# groups:
+#   common:
+#     dependencies:
+#       axios: ^1.6.0  → Move to 'shared-utils'
+#   react:             ← New group
+#     dependencies:
+#       react: ^18.2.0
+#       react-dom: ^18.2.0
+
+# 5. Update package.json files to use new groups:
+# packages/react-app/package.json:
+# "depGroups": ["react", "shared-utils"]
+
+# 6. Regenerate to apply changes:
 npx dependency-grouper generate
+
+# 7. Install and you're done!
+pnpm install
 ```
 
-### Fresh Setup
+### Option B: Fresh Setup (New Monorepo)
 
-### 1. Install
+Starting from scratch:
+
+#### 1. Install
 
 ```bash
-# pnpm
-pnpm add -D dependency-grouper
-
-# npm
-npm install -D dependency-grouper
-
-# yarn
-yarn add -D dependency-grouper
+pnpm add -D dependency-grouper  # or npm / yarn
 ```
 
-### 2. Create `.dep-groups.yaml` at workspace root
+#### 2. Create `.dep-groups.yaml` at workspace root
+
+Define your dependency groups:
 
 ```yaml
 groups:
-  webpack:
+  react:
     dependencies:
-      webpack: ^5.95.0
-      webpack-cli: ^5.1.4
+      react: ^18.2.0
+      react-dom: ^18.2.0
+    devDependencies:
+      '@types/react': ^18.2.0
   
-  vue:
+  shared-utils:
     dependencies:
-      vue: ^3.5.17
+      axios: ^1.6.0
+      lodash: ^4.17.21
 ```
 
-### 3. Reference groups in package.json
+#### 3. Add `depGroups` to package.json files
 
 ```json
 {
-  "name": "my-project",
-  "depGroups": ["webpack", "vue"],
-  "dependencies": {
-    "my-custom-dep": "^1.0.0"
-  }
+  "name": "my-react-app",
+  "depGroups": ["react", "shared-utils"]
 }
 ```
 
-### 4. Generate dependencies
+#### 4. Generate and install
 
 ```bash
-dependency-grouper generate
-```
-
-### 5. Install dependencies
-
-```bash
-# pnpm
+npx dependency-grouper generate
 pnpm install
-
-# npm
-npm install
-
-# yarn
-yarn install
 ```
 
-## Automatic Generation (Optional)
+---
 
-### Option 1: Preinstall Hook (Full Generation)
+## How It Works
 
-To automatically generate dependencies before every install, add to your **workspace root** `package.json`:
+1. **You define groups** in `.dep-groups.yaml` (shared dependency sets)
+2. **You reference groups** in `package.json` with `"depGroups": ["group1", "group2"]`
+3. **Run `generate`** → Merges group dependencies into each package.json
+4. **Run package manager** → Installs the merged dependencies
+
+**Bidirectional sync:**
+- `.dep-groups.yaml` → `package.json` (group deps added to packages)
+- `package.json` → `.dep-groups.yaml` (new deps captured in groups)
+
+---
+
+## CLI Commands
+
+### `dependency-grouper generate`
+
+**Full bidirectional sync** - Use this most of the time.
+
+1. Scans all package.json files  
+2. Updates `.dep-groups.yaml` with new dependencies
+3. Merges group dependencies back into package.json files
+4. Auto-populates empty `depGroups: []` arrays
+5. Injects preinstall scripts
+
+**When to use:**
+- Initial setup
+- After reorganizing groups
+- In preinstall hooks
+
+### `dependency-grouper sync`
+
+**One-way sync only** - package.json → `.dep-groups.yaml`
+
+Captures new dependencies without modifying package.json files. Faster, good for postinstall hooks.
+
+**When to use:**
+- Postinstall hooks to capture new deps
+- CI/CD to keep `.dep-groups.yaml` updated
+
+---
+
+## Automation (Optional)
+
+Add hooks to your **workspace root** `package.json` for automatic syncing:
+
+### Preinstall Hook (Recommended)
+
+Runs `generate` before every `pnpm install`:
 
 ```json
 {
-  "name": "my-monorepo",
-  "private": true,
   "scripts": {
     "preinstall": "dependency-grouper generate"
   }
 }
 ```
 
-### Option 2: Postinstall Hook (Sync Only) - Recommended for Development
+✅ Always in sync  
+✅ Team members don't need to remember  
+❌ Slower if you install frequently
 
-To automatically sync new dependencies after install without regenerating all files:
+### Postinstall Hook (Lightweight Alternative)
+
+Runs `sync` after install to capture new deps:
 
 ```json
 {
-  "name": "my-monorepo",
-  "private": true,
   "scripts": {
     "postinstall": "dependency-grouper sync"
   }
 }
 ```
 
-**How it works:**
-1. You run `pnpm add axios` in any package
-2. pnpm installs axios
-3. postinstall hook automatically runs `dependency-grouper sync`
-4. axios is captured in .dep-groups.yaml
-5. Next time you/anyone runs `generate`, all packages in that group get axios
+✅ Faster  
+✅ Captures new deps automatically  
+⚠️ Need to run `generate` manually to share with other packages
 
-**Perfect for development** - captures new dependencies automatically without slowing down every install.
+---
 
-### Comparison
+---
 
-| Hook | Command | When | Updates .dep-groups.yaml | Updates package.json |
-|------|---------|------|--------------------------|---------------------|
-| preinstall | `generate` | Before install | ✅ | ✅ |
-| postinstall | `sync` | After install | ✅ | ❌ |
+## Advanced Usage
 
-**Benefits:**
-- ✅ No manual `generate` command needed
-- ✅ Dependencies always up-to-date before install
-- ✅ Team members don't need to remember to run generate
-
-**When to use:**
-- ✓ Production/CI workflows - ensures consistency
-- ✓ Team environments - automatic for everyone
-- ✗ Active development - can be slower if you install frequently
-
-**Note:** Make sure `dependency-grouper` is installed before the preinstall hook runs. Add it as a devDependency at the workspace root.
-
-## Features
-
-- ✅ **Multi-package manager** - Works with pnpm, npm, and yarn workspaces
-- ✅ **Define once, use everywhere** - Create dependency groups in one place
-- ✅ **Bidirectional sync** - Updates flow both ways automatically
-- ✅ **Automatic sorting** - package.json keys and dependencies alphabetically sorted
-- ✅ **Type-safe** - Full TypeScript support with type definitions
-- ✅ **Smart merging** - Preserves project-specific dependencies
-- ✅ **Version control** - Update versions in one place
-- ✅ **CI/CD ready** - Optional preinstall hook for automation
-- ✅ **Nested projects** - Recursively finds all package.json files in monorepo
-- ✅ **Bootstrap from existing** - Generate .dep-groups.yaml from current dependencies
-
-## Configuration
-
-### .dep-groups.yaml
-
-```yaml
-groups:
-  groupName:
-    dependencies:
-      package-name: version
-    devDependencies:
-      dev-package: version
-```
-
-### package.json
+### Multiple Groups per Package
 
 ```json
 {
-  "depGroups": ["groupName1", "groupName2"]
+  "name": "my-app",
+  "depGroups": ["react", "shared-utils", "testing"]
 }
 ```
 
-## How It Works
-Recursively finds all package.json files (including nested sub-projects)
-3. Syncs new dependencies from package.json files to .dep-groups.yaml (bidirectional)
-4. Finds all package.json files with `depGroups` field
-5. Merges specified groups with existing dependencies
-6. Sorts dependencies alphabetically within each section
-7. Formats entire package.json with proper key ordering
-8. Writes updated package.json files
-9. Preserves project-specific dependencies
+All groups are merged together into the package.
 
-**Supports nested structures:**
+### Root vs Sub-Packages
+
+When bootstrapping with empty `depGroups: []`:
+- **Root** package.json → Auto-assigned `["root"]` group
+- **Sub-packages** → Auto-assigned `["common"]` group
+
+This separates monorepo tooling (root) from app dependencies (common).
+
+### Nested Monorepos
+
+Recursively finds ALL package.json files:
 ```
 monorepo/
-├── .dep-groups.yaml
-├── packages/
-│   ├── app1/package.json
-│   └── nested/
-│       └── deep/
-│           └── app2/package.json  ← Found!
-└── apps/
-    └── frontend/
-        └── utils/package.json  ← Found!
-``` key ordering
-7. Writes updated package.json files
-8. Preserves project-specific dependencies
+├── packages/app1/package.json          ← Found
+├── packages/nested/deep/app2/package.json ← Found
+└── apps/frontend/utils/package.json    ← Found
+```
+
+Skips `node_modules/` and `.git/` automatically.
+
+---
 
 ## Development
 
@@ -353,75 +347,70 @@ dependency-grouper sync
 - Faster, useful for postinstall hooks to capture new dependencies
 - Good for CI/CD to keep .dep-groups.yaml in sync
 
-## Example Workflow
+---
 
-### Initial Setup
+## Example Workflows
 
-```bash
-# 1. Install at workspace root
-pnpm add -D dependency-grouper
-
-# 2. Create .dep-groups.yaml
-cat > .dep-groups.yaml << EOF
-groups:
-  react:
-    dependencies:
-      react: "^18.2.0"
-      react-dom: "^18.2.0"
-EOF
-
-# 3. Add depGroups to a package
-cat > packages/my-app/package.json << EOF
-{
-  "name": "my-app",
-  "version": "1.0.0",
-  "depGroups": ["react"]
-}
-EOF
-
-# 4. Generate
-dependency-grouper generate
-
-# 5. Install
-pnpm install
-```
-
-### Daily Development
+### Sharing a New Dependency
 
 ```bash
-# You manually add a package
-cd packages/my-app
+# 1. Add to one package
+cd packages/app1
 pnpm add axios
-# ↑ postinstall hook runs automatically!
-# → dependency-grouper sync
-# → axios is now in .dep-groups.yaml
 
-# Later, share it with other packages
-dependency-grouper generate
-# → All packages with same depGroups get axios
+# 2. If you have postinstall hook, it's already in .dep-groups.yaml!
+# Otherwise, run manually:
+npx dependency-grouper sync
 
-# Or if you have preinstall hook, just:
-pnpm install
-# → generate runs automatically before install
+# 3. Share with other packages:
+npx dependency-grouper generate
 ```
 
-**With postinstall hook configured:**
+### Reorganizing Groups
+
 ```bash
-pnpm add lodash
-# 1. lodash added to current package.json
-# 2. pnpm installs lodash
-# 3. postinstall runs: dependency-grouper sync
-# 4. lodash automatically added to .dep-groups.yaml
-# 5. Next time anyone runs generate, they get lodash too
+# 1. Edit .dep-groups.yaml - split 'common' into specific groups
+code .dep-groups.yaml
+
+# 2. Update package.json files with new group names
+# "depGroups": ["react", "api-utils"]  # was ["common"]
+
+# 3. Regenerate
+npx dependency-grouper generate
 ```
 
-### Adding to Existing Groups
+### Updating a Dependency Version
 
-When you `pnpm add` a package to a project that has `depGroups`, the next time you run `generate`, it will:
-1. Detect the new package in your package.json
-2. Automatically add it to all groups listed in `depGroups`
-3. Sync it across all packages using those groups
+```bash
+# Just update the version in .dep-groups.yaml:
+# react: ^18.2.0  →  react: ^18.3.0
+
+npx dependency-grouper generate
+pnpm install
+# All packages using the 'react' group get v18.3.0!
+```
+
+---
 
 ## License
 
 MIT
+
+## Troubleshooting
+
+**Q: `.dep-groups.yaml` wasn't created**  
+A: Add `"depGroups": []` to at least one package.json, then run `generate`.
+
+**Q: Dependencies not merging**  
+A: Check that:
+- `depGroups` field exists in package.json
+- Group names match exactly (case-sensitive)  
+- You ran `generate` (not just `sync`)
+
+**Q: How to use AI to organize dependencies?**  
+A:
+1. Run `npx dependency-grouper generate` → creates `.dep-groups.yaml`
+2. Give `.dep-groups.yaml` to AI: *"Reorganize into logical groups (react, testing, build-tools, etc.)"*
+3. AI rewrites with better organization
+4. Update `depGroups` in package.json files to use new group names
+5. Run `npx dependency-grouper generate` to apply
