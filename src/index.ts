@@ -92,17 +92,40 @@ export function syncFromPackages(rootDir: string): void {
   
   const packageFiles = findPackageJsonFiles(rootDir);
   let updated = false;
+  let hasAnyDepGroups = false;
+  
+  // First pass: check if any package has depGroups defined
+  for (const pkgPath of packageFiles) {
+    const content = fs.readFileSync(pkgPath, 'utf-8');
+    const packageJson: PackageJson = JSON.parse(content);
+    if (packageJson.depGroups && packageJson.depGroups.length > 0) {
+      hasAnyDepGroups = true;
+      break;
+    }
+  }
   
   for (const pkgPath of packageFiles) {
     const content = fs.readFileSync(pkgPath, 'utf-8');
     const packageJson: PackageJson = JSON.parse(content);
     
-    if (!packageJson.depGroups || packageJson.depGroups.length === 0) {
+    // Check if this is the root package.json
+    const isRootPkg = path.dirname(pkgPath) === rootDir;
+    
+    // Determine which groups to sync to
+    let targetGroups: string[];
+    if (packageJson.depGroups && packageJson.depGroups.length > 0) {
+      targetGroups = packageJson.depGroups;
+    } else if (!hasAnyDepGroups || !fileExists) {
+      // Bootstrap mode: no depGroups exist yet, or file is new
+      // Root package.json goes to "root" group, others to "common"
+      targetGroups = [isRootPkg ? 'root' : 'common'];
+    } else {
+      // File exists and other packages have depGroups, but this one doesn't - skip it
       continue;
     }
     
     // For each group referenced, ensure it exists and has all dependencies from package.json
-    for (const groupName of packageJson.depGroups) {
+    for (const groupName of targetGroups) {
       if (!depGroups.groups[groupName]) {
         depGroups.groups[groupName] = {};
       }
@@ -139,13 +162,6 @@ export function syncFromPackages(rootDir: string): void {
         }
       }
     }
-  }
-  
-  // If no groups exist, create a default "common" group
-  if (Object.keys(depGroups.groups).length === 0) {
-    depGroups.groups.common = {};
-    updated = true;
-    console.log('  + Created default "common" group');
   }
   
   if (updated || !fileExists) {
