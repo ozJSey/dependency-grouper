@@ -160,7 +160,7 @@ To automatically generate dependencies before every install, add to your **works
 }
 ```
 
-### Option 2: Postinstall Hook (Sync Only)
+### Option 2: Postinstall Hook (Sync Only) - Recommended for Development
 
 To automatically sync new dependencies after install without regenerating all files:
 
@@ -174,7 +174,14 @@ To automatically sync new dependencies after install without regenerating all fi
 }
 ```
 
-This captures any new dependencies added via `pnpm add` and updates .dep-groups.yaml, without modifying existing package.json files.
+**How it works:**
+1. You run `pnpm add axios` in any package
+2. pnpm installs axios
+3. postinstall hook automatically runs `dependency-grouper sync`
+4. axios is captured in .dep-groups.yaml
+5. Next time you/anyone runs `generate`, all packages in that group get axios
+
+**Perfect for development** - captures new dependencies automatically without slowing down every install.
 
 ### Comparison
 
@@ -324,13 +331,27 @@ pnpm install
 # You manually add a package
 cd packages/my-app
 pnpm add axios
+# ↑ postinstall hook runs automatically!
+# → dependency-grouper sync
+# → axios is now in .dep-groups.yaml
 
-# Run generate - it syncs axios to your groups automatically
+# Later, share it with other packages
 dependency-grouper generate
+# → All packages with same depGroups get axios
 
-# Or if you have preinstall hook, just run:
+# Or if you have preinstall hook, just:
 pnpm install
-# (generate runs automatically)
+# → generate runs automatically before install
+```
+
+**With postinstall hook configured:**
+```bash
+pnpm add lodash
+# 1. lodash added to current package.json
+# 2. pnpm installs lodash
+# 3. postinstall runs: dependency-grouper sync
+# 4. lodash automatically added to .dep-groups.yaml
+# 5. Next time anyone runs generate, they get lodash too
 ```
 
 ### Adding to Existing Groups
