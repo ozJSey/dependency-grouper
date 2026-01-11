@@ -146,7 +146,9 @@ yarn install
 
 ## Automatic Generation (Optional)
 
-To automatically generate dependencies before every `pnpm install`, add a preinstall hook to your **workspace root** `package.json`:
+### Option 1: Preinstall Hook (Full Generation)
+
+To automatically generate dependencies before every install, add to your **workspace root** `package.json`:
 
 ```json
 {
@@ -158,6 +160,29 @@ To automatically generate dependencies before every `pnpm install`, add a preins
 }
 ```
 
+### Option 2: Postinstall Hook (Sync Only)
+
+To automatically sync new dependencies after install without regenerating all files:
+
+```json
+{
+  "name": "my-monorepo",
+  "private": true,
+  "scripts": {
+    "postinstall": "dependency-grouper sync"
+  }
+}
+```
+
+This captures any new dependencies added via `pnpm add` and updates .dep-groups.yaml, without modifying existing package.json files.
+
+### Comparison
+
+| Hook | Command | When | Updates .dep-groups.yaml | Updates package.json |
+|------|---------|------|--------------------------|---------------------|
+| preinstall | `generate` | Before install | ✅ | ✅ |
+| postinstall | `sync` | After install | ✅ | ❌ |
+
 **Benefits:**
 - ✅ No manual `generate` command needed
 - ✅ Dependencies always up-to-date before install
@@ -166,7 +191,7 @@ To automatically generate dependencies before every `pnpm install`, add a preins
 **When to use:**
 - ✓ Production/CI workflows - ensures consistency
 - ✓ Team environments - automatic for everyone
-- ✗ Active development - can be slower if you `pnpm install` frequently
+- ✗ Active development - can be slower if you install frequently
 
 **Note:** Make sure `dependency-grouper` is installed before the preinstall hook runs. Add it as a devDependency at the workspace root.
 
@@ -239,9 +264,26 @@ The `example/` directory contains a working pnpm monorepo with:
 # Show help
 dependency-grouper
 
-# Generate dependencies from groups
+# Generate dependencies from groups (sync + merge)
 dependency-grouper generate
+
+# Only sync package.json → .dep-groups.yaml (no merge back)
+dependency-grouper sync
 ```
+
+### When to Use Each Command
+
+**`generate`** (Recommended for most cases)
+- Full bidirectional sync
+- Updates .dep-groups.yaml from package.json files
+- Then updates all package.json files from .dep-groups.yaml
+- Use in preinstall hooks or manually
+
+**`sync`** (Lightweight)
+- Only updates .dep-groups.yaml from package.json files
+- Doesn't modify any package.json files
+- Faster, useful for postinstall hooks to capture new dependencies
+- Good for CI/CD to keep .dep-groups.yaml in sync
 
 ## Example Workflow
 
