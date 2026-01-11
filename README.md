@@ -86,6 +86,33 @@ Run `dependency-grouper generate` and it merges the groups with automatic sortin
 
 ## Usage
 
+### Quick Start (Existing Monorepo)
+
+If you already have a monorepo with dependencies, bootstrap from existing packages:
+
+```bash
+# 1. Install
+pnpm add -D dependency-grouper
+
+# 2. Add depGroups to your packages
+# Edit packages/your-app/package.json:
+{
+  "depGroups": ["yourProjectNames(more than 1 will add to all, later you can decide their fate)"]  // ← Add this
+}
+
+# 3. Generate .dep-groups.yaml from existing dependencies
+npx dependency-grouper sync
+# This creates .dep-groups.yaml with all dependencies from packages with depGroups
+
+# 4. Review and organize .dep-groups.yaml
+nano .dep-groups.yaml
+
+# 5. Generate to sync across all packages
+npx dependency-grouper generate
+```
+
+### Fresh Setup
+
 ### 1. Install
 
 ```bash
@@ -212,6 +239,8 @@ To automatically sync new dependencies after install without regenerating all fi
 - ✅ **Smart merging** - Preserves project-specific dependencies
 - ✅ **Version control** - Update versions in one place
 - ✅ **CI/CD ready** - Optional preinstall hook for automation
+- ✅ **Nested projects** - Recursively finds all package.json files in monorepo
+- ✅ **Bootstrap from existing** - Generate .dep-groups.yaml from current dependencies
 
 ## Configuration
 
@@ -235,13 +264,28 @@ groups:
 ```
 
 ## How It Works
+Recursively finds all package.json files (including nested sub-projects)
+3. Syncs new dependencies from package.json files to .dep-groups.yaml (bidirectional)
+4. Finds all package.json files with `depGroups` field
+5. Merges specified groups with existing dependencies
+6. Sorts dependencies alphabetically within each section
+7. Formats entire package.json with proper key ordering
+8. Writes updated package.json files
+9. Preserves project-specific dependencies
 
-1. Detects workspace root (pnpm-workspace.yaml, npm/yarn workspaces, or .dep-groups.yaml)
-2. Syncs new dependencies from package.json files to .dep-groups.yaml (bidirectional)
-3. Finds all package.json files with `depGroups` field
-4. Merges specified groups with existing dependencies
-5. Sorts dependencies alphabetically within each section
-6. Formats entire package.json with proper key ordering
+**Supports nested structures:**
+```
+monorepo/
+├── .dep-groups.yaml
+├── packages/
+│   ├── app1/package.json
+│   └── nested/
+│       └── deep/
+│           └── app2/package.json  ← Found!
+└── apps/
+    └── frontend/
+        └── utils/package.json  ← Found!
+``` key ordering
 7. Writes updated package.json files
 8. Preserves project-specific dependencies
 
