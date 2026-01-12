@@ -474,6 +474,41 @@ function testEmptyDepGroups() {
   console.log('✓ Empty depGroups handled correctly');
 }
 
+function testVersionUpdateSync() {
+  console.log('Testing version update sync...');
+  
+  const versionTestDir = path.join(TEST_DIR, 'version-update');
+  fs.mkdirSync(path.join(versionTestDir, 'packages', 'app1'), { recursive: true });
+  
+  // Create .dep-groups.yaml with old version
+  fs.writeFileSync(path.join(versionTestDir, '.dep-groups.yaml'), `groups:
+  react:
+    dependencies:
+      react: "^18.2.0"
+      react-dom: "^18.2.0"
+`);
+  
+  // Create package with updated version
+  fs.writeFileSync(path.join(versionTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: ['react'],
+    dependencies: {
+      react: '^18.3.0',  // Updated version
+      'react-dom': '^18.2.0'  // Same version
+    }
+  }));
+  
+  syncFromPackages(versionTestDir);
+  
+  const depGroups = loadDepGroups(versionTestDir);
+  
+  // react should be updated to 18.3.0
+  assert.strictEqual(depGroups.groups.react.dependencies.react, '^18.3.0', 'Should update react version');
+  assert.strictEqual(depGroups.groups.react.dependencies['react-dom'], '^18.2.0', 'Should keep react-dom unchanged');
+  
+  console.log('✓ Version sync works correctly');
+}
+
 function runTests() {
   console.log('\n=== Running dependency-grouper tests ===\n');
   
@@ -496,6 +531,7 @@ function runTests() {
     testSyncFromPackages_NewFile();
     testSyncFromPackages_ExistingFile();
     testSyncFromPackages_RootVsCommon();
+    testVersionUpdateSync();
     
     // Feature tests
     testAutoPopulateDepGroups();
@@ -503,7 +539,7 @@ function runTests() {
     
     cleanup();
     
-    console.log('\n✓ All 15 tests passed!\n');
+    console.log('\n✓ All 16 tests passed!\n');
     process.exit(0);
   } catch (error) {
     console.error('\n✗ Test failed:', error.message);

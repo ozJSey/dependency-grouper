@@ -124,38 +124,58 @@ export function syncFromPackages(rootDir: string): void {
       continue;
     }
     
-    // Helper function to check if a dependency exists in any of the target groups
-    const existsInAnyGroup = (dep: string, isDevDep: boolean): boolean => {
+    // Helper function to find which group contains a dependency
+    const findGroupWithDep = (dep: string, isDevDep: boolean): string | null => {
       for (const groupName of targetGroups) {
         const group = depGroups.groups[groupName];
         if (!group) continue;
         
         if (isDevDep && group.devDependencies && group.devDependencies[dep]) {
-          return true;
+          return groupName;
         }
         if (!isDevDep && group.dependencies && group.dependencies[dep]) {
-          return true;
+          return groupName;
         }
       }
-      return false;
+      return null;
     };
     
-    // Collect dependencies that don't exist in any referenced group
+    // Collect new dependencies and check for version updates
     const newDependencies: Record<string, string> = {};
     const newDevDependencies: Record<string, string> = {};
     
     if (packageJson.dependencies) {
       for (const [dep, version] of Object.entries(packageJson.dependencies)) {
-        if (!existsInAnyGroup(dep, false)) {
+        const groupName = findGroupWithDep(dep, false);
+        if (!groupName) {
+          // New dependency - add to standalone
           newDependencies[dep] = version;
+        } else {
+          // Existing dependency - check for version mismatch
+          const group = depGroups.groups[groupName];
+          if (group.dependencies && group.dependencies[dep] !== version) {
+            group.dependencies[dep] = version;
+            updated = true;
+            console.log(`  ↻ Updated ${dep}: ${group.dependencies[dep]} → ${version} in group "${groupName}"`);
+          }
         }
       }
     }
     
     if (packageJson.devDependencies) {
       for (const [dep, version] of Object.entries(packageJson.devDependencies)) {
-        if (!existsInAnyGroup(dep, true)) {
+        const groupName = findGroupWithDep(dep, true);
+        if (!groupName) {
+          // New dependency - add to standalone
           newDevDependencies[dep] = version;
+        } else {
+          // Existing dependency - check for version mismatch
+          const group = depGroups.groups[groupName];
+          if (group.devDependencies && group.devDependencies[dep] !== version) {
+            group.devDependencies[dep] = version;
+            updated = true;
+            console.log(`  ↻ Updated ${dep} (dev): ${group.devDependencies[dep]} → ${version} in group "${groupName}"`);
+          }
         }
       }
     }
