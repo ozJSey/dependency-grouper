@@ -117,47 +117,83 @@ export function syncFromPackages(rootDir: string): void {
       targetGroups = packageJson.depGroups;
     } else if (!hasAnyDepGroups || !fileExists) {
       // Bootstrap mode: no depGroups exist yet, or file is new
-      // Root package.json goes to "root" group, others to "common"
-      targetGroups = [isRootPkg ? 'root' : 'common'];
+      // Root package.json goes to "root" group, others to "standalone"
+      targetGroups = [isRootPkg ? 'root' : 'standalone'];
     } else {
       // File exists and other packages have depGroups, but this one doesn't - skip it
       continue;
     }
     
-    // For each group referenced, ensure it exists and has all dependencies from package.json
-    for (const groupName of targetGroups) {
-      if (!depGroups.groups[groupName]) {
-        depGroups.groups[groupName] = {};
+    // Helper function to check if a dependency exists in any of the target groups
+    const existsInAnyGroup = (dep: string, isDevDep: boolean): boolean => {
+      for (const groupName of targetGroups) {
+        const group = depGroups.groups[groupName];
+        if (!group) continue;
+        
+        if (isDevDep && group.devDependencies && group.devDependencies[dep]) {
+          return true;
+        }
+        if (!isDevDep && group.dependencies && group.dependencies[dep]) {
+          return true;
+        }
+      }
+      return false;
+    };
+    
+    // Collect dependencies that don't exist in any referenced group
+    const newDependencies: Record<string, string> = {};
+    const newDevDependencies: Record<string, string> = {};
+    
+    if (packageJson.dependencies) {
+      for (const [dep, version] of Object.entries(packageJson.dependencies)) {
+        if (!existsInAnyGroup(dep, false)) {
+          newDependencies[dep] = version;
+        }
+      }
+    }
+    
+    if (packageJson.devDependencies) {
+      for (const [dep, version] of Object.entries(packageJson.devDependencies)) {
+        if (!existsInAnyGroup(dep, true)) {
+          newDevDependencies[dep] = version;
+        }
+      }
+    }
+    
+    // Add new dependencies to "standalone" group (or "root" for root package)
+    if (Object.keys(newDependencies).length > 0 || Object.keys(newDevDependencies).length > 0) {
+      const standaloneGroupName = isRootPkg ? 'root' : 'standalone';
+      
+      if (!depGroups.groups[standaloneGroupName]) {
+        depGroups.groups[standaloneGroupName] = {};
       }
       
-      const group = depGroups.groups[groupName];
+      const standaloneGroup = depGroups.groups[standaloneGroupName];
       
-      // Sync dependencies
-      if (packageJson.dependencies) {
-        if (!group.dependencies) {
-          group.dependencies = {};
+      // Add new dependencies
+      if (Object.keys(newDependencies).length > 0) {
+        if (!standaloneGroup.dependencies) {
+          standaloneGroup.dependencies = {};
         }
-        for (const [dep, version] of Object.entries(packageJson.dependencies)) {
-          // Only add if not already in group
-          if (!group.dependencies[dep]) {
-            group.dependencies[dep] = version;
+        for (const [dep, version] of Object.entries(newDependencies)) {
+          if (!standaloneGroup.dependencies[dep]) {
+            standaloneGroup.dependencies[dep] = version;
             updated = true;
-            console.log(`  + Added ${dep}@${version} to group "${groupName}"`);
+            console.log(`  + Added ${dep}@${version} to group "${standaloneGroupName}"`);
           }
         }
       }
       
-      // Sync devDependencies
-      if (packageJson.devDependencies) {
-        if (!group.devDependencies) {
-          group.devDependencies = {};
+      // Add new devDependencies
+      if (Object.keys(newDevDependencies).length > 0) {
+        if (!standaloneGroup.devDependencies) {
+          standaloneGroup.devDependencies = {};
         }
-        for (const [dep, version] of Object.entries(packageJson.devDependencies)) {
-          // Only add if not already in group
-          if (!group.devDependencies[dep]) {
-            group.devDependencies[dep] = version;
+        for (const [dep, version] of Object.entries(newDevDependencies)) {
+          if (!standaloneGroup.devDependencies[dep]) {
+            standaloneGroup.devDependencies[dep] = version;
             updated = true;
-            console.log(`  + Added ${dep}@${version} (dev) to group "${groupName}"`);
+            console.log(`  + Added ${dep}@${version} (dev) to group "${standaloneGroupName}"`);
           }
         }
       }
@@ -266,7 +302,7 @@ export function generateDependencies(rootDir?: string): void {
     
     // Auto-populate depGroups if it's an empty array
     if (packageJson.depGroups !== undefined && Array.isArray(packageJson.depGroups) && packageJson.depGroups.length === 0) {
-      packageJson.depGroups = [isRootPkg ? 'root' : 'common'];
+      packageJson.depGroups = [isRootPkg ? 'root' : 'standalone'];
       console.log(`Auto-populated depGroups for ${packageJson.name || path.basename(path.dirname(pkgPath))} → [${packageJson.depGroups.join(', ')}]`);
     }
     

@@ -106,8 +106,8 @@ npx dependency-grouper generate
 
 **What just happened:**
 1. ✅ Created `.dep-groups.yaml` with all your dependencies organized
-2. ✅ Root dependencies → `root` group, sub-packages → `common` group  
-3. ✅ Auto-populated `depGroups: ["root"]` or `["common"]` in all files
+2. ✅ Root dependencies → `root` group, sub-packages → `standalone` group  
+3. ✅ Auto-populated `depGroups: ["root"]` or `["standalone"]` in all files
 4. ✅ Injected `preinstall` script for automatic sync
 
 **Next steps:**
@@ -115,9 +115,9 @@ npx dependency-grouper generate
 # 4. Review and reorganize the generated .dep-groups.yaml
 code .dep-groups.yaml
 
-# Example: Split 'common' into specific groups:
+# Example: Split 'standalone' into specific groups:
 # groups:
-#   common:
+#   standalone:
 #     dependencies:
 #       axios: ^1.6.0  → Move to 'shared-utils'
 #   react:             ← New group
@@ -282,9 +282,28 @@ All groups are merged together into the package.
 
 When bootstrapping with empty `depGroups: []`:
 - **Root** package.json → Auto-assigned `["root"]` group
-- **Sub-packages** → Auto-assigned `["common"]` group
+- **Sub-packages** → Auto-assigned `["standalone"]` group
 
-This separates monorepo tooling (root) from app dependencies (common).
+This separates monorepo tooling (root) from app dependencies (standalone).
+
+### Smart Sync Behavior
+
+When you run `sync`, only **new** dependencies are added:
+
+```json
+// package.json with multiple groups
+{
+  "depGroups": ["react", "webpack"],
+  "dependencies": {
+    "react": "^18.2.0",        // Already in "react" group → skipped
+    "webpack": "^5.0.0",        // Already in "webpack" group → skipped
+    "my-custom-lib": "^1.0.0"  // NEW → added to "standalone" only
+  }
+}
+```
+
+✅ Prevents polluting shared groups with package-specific dependencies  
+✅ Only unmanaged dependencies go to "standalone" group
 
 ### Nested Monorepos
 
@@ -369,11 +388,11 @@ npx dependency-grouper generate
 ### Reorganizing Groups
 
 ```bash
-# 1. Edit .dep-groups.yaml - split 'common' into specific groups
+# 1. Edit .dep-groups.yaml - split 'standalone' into specific groups
 code .dep-groups.yaml
 
 # 2. Update package.json files with new group names
-# "depGroups": ["react", "api-utils"]  # was ["common"]
+# "depGroups": ["react", "api-utils"]  # was ["standalone"]
 
 # 3. Regenerate
 npx dependency-grouper generate

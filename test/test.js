@@ -234,11 +234,11 @@ function testSyncFromPackages_NewFile() {
   
   const depGroups = loadDepGroups(syncTestDir);
   
-  // Root should get 'root' group, app1 should get 'common' group
-  assert.ok(depGroups.groups.common, 'Should have common group');
-  assert.strictEqual(depGroups.groups.common.dependencies.react, '^18.2.0', 'Should capture react');
-  assert.strictEqual(depGroups.groups.common.dependencies.axios, '^1.0.0', 'Should capture axios');
-  assert.strictEqual(depGroups.groups.common.devDependencies.jest, '^29.0.0', 'Should capture jest');
+  // Root should get 'root' group, app1 should get 'standalone' group
+  assert.ok(depGroups.groups.standalone, 'Should have standalone group');
+  assert.strictEqual(depGroups.groups.standalone.dependencies.react, '^18.2.0', 'Should capture react');
+  assert.strictEqual(depGroups.groups.standalone.dependencies.axios, '^1.0.0', 'Should capture axios');
+  assert.strictEqual(depGroups.groups.standalone.devDependencies.jest, '^29.0.0', 'Should capture jest');
   
   console.log('✓ syncFromPackages (new file) works correctly');
 }
@@ -251,7 +251,7 @@ function testSyncFromPackages_ExistingFile() {
   
   // Create existing .dep-groups.yaml
   fs.writeFileSync(path.join(syncTestDir, '.dep-groups.yaml'), `groups:
-  common:
+  standalone:
     dependencies:
       react: "^18.2.0"
 `);
@@ -259,7 +259,7 @@ function testSyncFromPackages_ExistingFile() {
   // Create package with depGroups reference
   fs.writeFileSync(path.join(syncTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
     name: 'app1',
-    depGroups: ['common'],
+    depGroups: ['standalone'],
     dependencies: {
       react: '^18.2.0',
       axios: '^1.0.0'  // New dependency
@@ -271,16 +271,16 @@ function testSyncFromPackages_ExistingFile() {
   const depGroups = loadDepGroups(syncTestDir);
   
   // Should keep react and add axios
-  assert.strictEqual(depGroups.groups.common.dependencies.react, '^18.2.0', 'Should keep react');
-  assert.strictEqual(depGroups.groups.common.dependencies.axios, '^1.0.0', 'Should add axios');
+  assert.strictEqual(depGroups.groups.standalone.dependencies.react, '^18.2.0', 'Should keep react');
+  assert.strictEqual(depGroups.groups.standalone.dependencies.axios, '^1.0.0', 'Should add axios');
   
   console.log('✓ syncFromPackages (existing file) works correctly');
 }
 
 function testSyncFromPackages_RootVsCommon() {
-  console.log('Testing syncFromPackages (root vs common groups)...');
+  console.log('Testing syncFromPackages (root vs standalone groups)...');
   
-  const syncTestDir = path.join(TEST_DIR, 'sync-root-common');
+  const syncTestDir = path.join(TEST_DIR, 'sync-root-standalone');
   fs.mkdirSync(path.join(syncTestDir, 'packages', 'app1'), { recursive: true });
   
   // Root package with empty depGroups
@@ -311,11 +311,11 @@ function testSyncFromPackages_RootVsCommon() {
   assert.strictEqual(depGroups.groups.root.devDependencies.typescript, '^5.0.0', 'Root deps in root group');
   assert.strictEqual(depGroups.groups.root.devDependencies.eslint, '^8.0.0', 'Root deps in root group');
   
-  // Sub-package deps should be in 'common' group
-  assert.ok(depGroups.groups.common, 'Should have common group');
-  assert.strictEqual(depGroups.groups.common.dependencies.react, '^18.2.0', 'Sub-package deps in common group');
+  // Sub-package deps should be in 'standalone' group
+  assert.ok(depGroups.groups.standalone, 'Should have standalone group');
+  assert.strictEqual(depGroups.groups.standalone.dependencies.react, '^18.2.0', 'Sub-package deps in standalone group');
   
-  console.log('✓ syncFromPackages (root vs common) works correctly');
+  console.log('✓ syncFromPackages (root vs standalone) works correctly');
 }
 
 function testAutoPopulateDepGroups() {
@@ -329,7 +329,7 @@ function testAutoPopulateDepGroups() {
   root:
     devDependencies:
       typescript: "^5.0.0"
-  common:
+  standalone:
     dependencies:
       react: "^18.2.0"
 `);
@@ -353,9 +353,9 @@ function testAutoPopulateDepGroups() {
   assert.deepStrictEqual(rootPkg.depGroups, ['root'], 'Root should get ["root"]');
   assert.strictEqual(rootPkg.devDependencies.typescript, '^5.0.0', 'Root should have typescript');
   
-  // Check sub-package was populated with ["common"]
+  // Check sub-package was populated with ["standalone"]
   const app1Pkg = JSON.parse(fs.readFileSync(path.join(autoPopTestDir, 'packages', 'app1', 'package.json'), 'utf-8'));
-  assert.deepStrictEqual(app1Pkg.depGroups, ['common'], 'Sub-package should get ["common"]');
+  assert.deepStrictEqual(app1Pkg.depGroups, ['standalone'], 'Sub-package should get ["standalone"]');
   assert.strictEqual(app1Pkg.dependencies.react, '^18.2.0', 'Sub-package should have react');
   
   console.log('✓ Auto-populate depGroups works correctly');
@@ -369,7 +369,7 @@ function testPreinstallScriptInjection() {
   
   // Create .dep-groups.yaml
   fs.writeFileSync(path.join(scriptTestDir, '.dep-groups.yaml'), `groups:
-  common:
+  standalone:
     dependencies:
       react: "^18.2.0"
 `);
@@ -377,7 +377,7 @@ function testPreinstallScriptInjection() {
   // Test 1: No scripts object
   fs.writeFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
     name: 'app1',
-    depGroups: ['common']
+    depGroups: ['standalone']
   }));
   
   generateDependencies(scriptTestDir);
@@ -389,7 +389,7 @@ function testPreinstallScriptInjection() {
   // Test 2: Existing preinstall (different command)
   fs.writeFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
     name: 'app1',
-    depGroups: ['common'],
+    depGroups: ['standalone'],
     scripts: {
       preinstall: 'echo "hello"'
     }
@@ -403,7 +403,7 @@ function testPreinstallScriptInjection() {
   // Test 3: Preinstall already has dependency-grouper
   fs.writeFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
     name: 'app1',
-    depGroups: ['common'],
+    depGroups: ['standalone'],
     scripts: {
       preinstall: 'dependency-grouper generate'
     }
@@ -465,7 +465,7 @@ function testEmptyDepGroups() {
     dependencies: { axios: '^1.0.0' }
   };
   
-  const depGroups = { groups: { common: { dependencies: { react: '^18.2.0' } } } };
+  const depGroups = { groups: { standalone: { dependencies: { react: '^18.2.0' } } } };
   
   // Should not merge anything for empty depGroups
   const merged = mergeDepGroups(packageJson, depGroups);
