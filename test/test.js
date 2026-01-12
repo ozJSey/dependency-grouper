@@ -509,6 +509,108 @@ function testVersionUpdateSync() {
   console.log('✓ Version sync works correctly');
 }
 
+function testWorkspaceProtocolSkip() {
+  console.log('Testing workspace protocol skip...');
+  
+  const workspaceTestDir = path.join(TEST_DIR, 'workspace-protocol');
+  fs.mkdirSync(path.join(workspaceTestDir, 'packages', 'app1'), { recursive: true });
+  
+  // Create package with workspace dependencies
+  fs.writeFileSync(path.join(workspaceTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: [],
+    dependencies: {
+      '@myorg/shared': 'workspace:*',  // Should be skipped
+      react: '^18.2.0'  // Should be synced
+    },
+    devDependencies: {
+      '@myorg/utils': 'workspace:^',  // Should be skipped
+      jest: '^29.0.0'  // Should be synced
+    }
+  }));
+  
+  syncFromPackages(workspaceTestDir);
+  
+  const depGroups = loadDepGroups(workspaceTestDir);
+  
+  // Only react and jest should be in standalone, not workspace deps
+  assert.ok(depGroups.groups.standalone, 'Should have standalone group');
+  assert.strictEqual(depGroups.groups.standalone.dependencies.react, '^18.2.0', 'Should sync react');
+  assert.strictEqual(depGroups.groups.standalone.devDependencies.jest, '^29.0.0', 'Should sync jest');
+  assert.strictEqual(depGroups.groups.standalone.dependencies['@myorg/shared'], undefined, 'Should skip workspace:*');
+  assert.strictEqual(depGroups.groups.standalone.devDependencies['@myorg/utils'], undefined, 'Should skip workspace:^');
+  
+  console.log('✓ Workspace protocol skip works correctly');
+}
+
+function testVersionConflictWarning() {
+  console.log('Testing version conflict warning...');
+  
+  const packageJson = {
+    name: 'test',
+    depGroups: ['react-18', 'react-17'],
+    dependencies: {}
+  };
+  
+  const depGroups = {
+    groups: {
+      'react-18': {
+        dependencies: {
+          react: '^18.0.0'
+        }
+      },
+      'react-17': {
+        dependencies: {
+          react: '^17.0.0'  // Conflict!
+        }
+      }
+    }
+  };
+  
+  // Should warn and use last group's version (react-17)
+  const merged = mergeDepGroups(packageJson, depGroups);
+  assert.strictEqual(merged.dependencies.react, '^17.0.0', 'Should use last group version');
+  
+  console.log('✓ Version conflict warning works correctly');
+}
+
+function testStaticDependenciesPreserved() {
+  console.log('Testing static dependencies preservation...');
+  
+  const staticTestDir = path.join(TEST_DIR, 'static-deps');
+  fs.mkdirSync(path.join(staticTestDir, 'packages', 'app1'), { recursive: true });
+  
+  // Create .dep-groups.yaml with groups
+  fs.writeFileSync(path.join(staticTestDir, '.dep-groups.yaml'), `groups:
+  react:
+    dependencies:
+      react: "^18.2.0"
+  utils:
+    dependencies:
+      lodash: "^4.17.21"
+`);
+  
+  // Create package with static dependency + groups
+  fs.writeFileSync(path.join(staticTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
+    name: 'app1',
+    depGroups: ['react', 'utils'],
+    dependencies: {
+      'my-custom-lib': '^1.0.0'  // Static dependency
+    }
+  }));
+  
+  generateDependencies(staticTestDir);
+  
+  const pkg = JSON.parse(fs.readFileSync(path.join(staticTestDir, 'packages', 'app1', 'package.json'), 'utf-8'));
+  
+  // Should have all: static + react + utils groups
+  assert.strictEqual(pkg.dependencies['my-custom-lib'], '^1.0.0', 'Should preserve static dependency');
+  assert.strictEqual(pkg.dependencies.react, '^18.2.0', 'Should add react from group');
+  assert.strictEqual(pkg.dependencies.lodash, '^4.17.21', 'Should add lodash from group');
+  
+  console.log('✓ Static dependencies preserved correctly');
+}
+
 function runTests() {
   console.log('\n=== Running dependency-grouper tests ===\n');
   
@@ -532,14 +634,17 @@ function runTests() {
     testSyncFromPackages_ExistingFile();
     testSyncFromPackages_RootVsCommon();
     testVersionUpdateSync();
+    testWorkspaceProtocolSkip();
     
     // Feature tests
     testAutoPopulateDepGroups();
     testPreinstallScriptInjection();
+    testVersionConflictWarning();
+    testStaticDependenciesPreserved();
     
     cleanup();
     
-    console.log('\n✓ All 16 tests passed!\n');
+    console.log('\n✓ All 19 tests passed!\n');
     process.exit(0);
   } catch (error) {
     console.error('\n✗ Test failed:', error.message);

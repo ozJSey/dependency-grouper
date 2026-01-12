@@ -146,6 +146,11 @@ export function syncFromPackages(rootDir: string): void {
     
     if (packageJson.dependencies) {
       for (const [dep, version] of Object.entries(packageJson.dependencies)) {
+        // Skip workspace protocol dependencies (internal monorepo refs)
+        if (typeof version === 'string' && version.startsWith('workspace:')) {
+          continue;
+        }
+        
         const groupName = findGroupWithDep(dep, false);
         if (!groupName) {
           // New dependency - add to standalone
@@ -164,6 +169,11 @@ export function syncFromPackages(rootDir: string): void {
     
     if (packageJson.devDependencies) {
       for (const [dep, version] of Object.entries(packageJson.devDependencies)) {
+        // Skip workspace protocol dependencies (internal monorepo refs)
+        if (typeof version === 'string' && version.startsWith('workspace:')) {
+          continue;
+        }
+        
         const groupName = findGroupWithDep(dep, true);
         if (!groupName) {
           // New dependency - add to standalone
@@ -221,8 +231,61 @@ export function syncFromPackages(rootDir: string): void {
   }
   
   if (updated || !fileExists) {
+    // Add helpful comments for special groups
+    let yamlContent = '';
+    
+    // Add header comment
+    yamlContent += '# Dependency Groups Configuration\n';
+    yamlContent += '# Define shared dependency sets and reference them in package.json via "depGroups"\n\n';
+    
+    yamlContent += 'groups:\n';
+    
+    // Sort groups: root first, standalone last, others alphabetically
+    const groupNames = Object.keys(depGroups.groups).sort((a, b) => {
+      if (a === 'root') return -1;
+      if (b === 'root') return 1;
+      if (a === 'standalone') return 1;
+      if (b === 'standalone') return -1;
+      return a.localeCompare(b);
+    });
+    
+    for (const groupName of groupNames) {
+      const group = depGroups.groups[groupName];
+      
+      // Add comment for special groups
+      if (groupName === 'root') {
+        yamlContent += '  # Root group: for workspace root package.json only\n';
+      } else if (groupName === 'standalone') {
+        yamlContent += '  # Standalone group: auto-managed package-specific dependencies\n';
+        yamlContent += '  # Do not manually add "standalone" to depGroups - it\'s used internally\n';
+      }
+      
+      yamlContent += `  ${groupName}:\n`;
+      
+      if (group.dependencies && Object.keys(group.dependencies).length > 0) {
+        yamlContent += '    dependencies:\n';
+        for (const [dep, version] of Object.entries(group.dependencies)) {
+          const quotedDep = dep.includes('@') || dep.includes(':') ? `"${dep}"` : dep;
+          yamlContent += `      ${quotedDep}: ${JSON.stringify(version)}\n`;
+        }
+      }
+      
+      if (group.devDependencies && Object.keys(group.devDependencies).length > 0) {
+        yamlContent += '    devDependencies:\n';
+        for (const [dep, version] of Object.entries(group.devDependencies)) {
+          const quotedDep = dep.includes('@') || dep.includes(':') ? `"${dep}"` : dep;
+          yamlContent += `      ${quotedDep}: ${JSON.stringify(version)}\n`;
+        }
+      }
+      
+      // Empty line between groups
+      if (groupName !== groupNames[groupNames.length - 1]) {
+        yamlContent += '\n';
+      }
+    }
+    
     // Write back to .dep-groups.yaml (create if new, or update if changed)
-    fs.writeFileSync(configPath, yaml.stringify(depGroups), 'utf-8');
+    fs.writeFileSync(configPath, yamlContent, 'utf-8');
     if (fileExists) {
       console.log(`\n✓ Updated .dep-groups.yaml\n`);
     } else {
@@ -245,6 +308,10 @@ export function mergeDepGroups(
   merged.dependencies = { ...packageJson.dependencies };
   merged.devDependencies = { ...packageJson.devDependencies };
   
+  // Track version conflicts
+  const depVersions: Record<string, { version: string; group: string }> = {};
+  const devDepVersions: Record<string, { version: string; group: string }> = {};
+  
   for (const groupName of packageJson.depGroups) {
     const group = depGroups.groups[groupName];
     
@@ -254,6 +321,14 @@ export function mergeDepGroups(
     }
     
     if (group.dependencies) {
+      for (const [dep, version] of Object.entries(group.dependencies)) {
+        // Check for version conflicts
+        if (depVersions[dep] && depVersions[dep].version !== version) {
+          console.warn(`Warning: Version conflict for "${dep}": ${depVersions[dep].version} (${depVersions[dep].group}) vs ${version} (${groupName}). Using ${version}.`);
+        }
+        depVersions[dep] = { version, group: groupName };
+      }
+      
       merged.dependencies = {
         ...merged.dependencies,
         ...group.dependencies,
@@ -261,6 +336,14 @@ export function mergeDepGroups(
     }
     
     if (group.devDependencies) {
+      for (const [dep, version] of Object.entries(group.devDependencies)) {
+        // Check for version conflicts
+        if (devDepVersions[dep] && devDepVersions[dep].version !== version) {
+          console.warn(`Warning: Version conflict for "${dep}" (dev): ${devDepVersions[dep].version} (${devDepVersions[dep].group}) vs ${version} (${groupName}). Using ${version}.`);
+        }
+        devDepVersions[dep] = { version, group: groupName };
+      }
+      
       merged.devDependencies = {
         ...merged.devDependencies,
         ...group.devDependencies,
