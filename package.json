@@ -1,6 +1,6 @@
 {
   "name": "dependency-grouper",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Group and reuse dependency sets across monorepo projects (pnpm, npm, yarn)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
