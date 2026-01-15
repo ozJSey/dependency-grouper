@@ -20,12 +20,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ozgurseyidoglu/dependency-grouper.git"
+    "url": "git+https://github.com/ozjsey/dependency-grouper.git"
   },
   "bugs": {
-    "url": "https://github.com/ozgurseyidoglu/dependency-grouper/issues"
+    "url": "https://github.com/ozjsey/dependency-grouper/issues"
   },
-  "homepage": "https://github.com/ozgurseyidoglu/dependency-grouper#readme",
+  "homepage": "https://github.com/ozjsey/dependency-grouper#readme",
   "engines": {
     "node": ">=16.0.0"
   },
