@@ -1,6 +1,4 @@
-#!/usr/bin/env node
-
-import { generateDependencies } from './index';
+import { generateDependencies, findWorkspaceRoot, syncFromPackages } from './index';
 import process from 'process';
 
 const command = process.argv[2];
@@ -14,13 +12,13 @@ if (command === 'generate') {
   }
 } else if (command === 'sync') {
   try {
-    const workspaceRoot = require('./index').findWorkspaceRoot();
+    const workspaceRoot = findWorkspaceRoot();
     if (!workspaceRoot) {
       console.error('Could not find workspace root');
       process.exit(1);
     }
     console.log(`Found workspace root: ${workspaceRoot}\n`);
-    require('./index').syncFromPackages(workspaceRoot);
+    syncFromPackages(workspaceRoot);
   } catch (error) {
     console.error('Error:', error instanceof Error ? error.message : error);
     process.exit(1);

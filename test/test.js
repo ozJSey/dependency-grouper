@@ -10,7 +10,7 @@ const {
   findWorkspaceRoot,
   findPackageJsonFiles,
   syncFromPackages
-} = require('../dist/index.js');
+} = require('../dist/index.min.js');
 
 const TEST_DIR = path.join(__dirname, 'fixtures');
 

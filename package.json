@@ -1,19 +1,20 @@
 {
   "name": "dependency-grouper",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Group and reuse dependency sets across monorepo projects (pnpm, npm, yarn)",
-  "main": "dist/index.js",
+  "main": "dist/index.min.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "dependency-grouper": "dist/cli.js",
-    "dep-grouper": "dist/cli.js"
+    "dependency-grouper": "dist/cli.min.js",
+    "dep-grouper": "dist/cli.min.js"
   },
   "files": [
-    "dist",
+    "dist/*.min.js",
+    "dist/*.d.ts",
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --emitDeclarationOnly && node esbuild.config.js",
     "dev": "tsc --watch",
     "test": "npm run build && node test/test.js",
     "prepublishOnly": "npm run build"
@@ -44,6 +45,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "esbuild": "^0.27.4",
     "typescript": "^5.3.3"
   },
   "dependencies": {

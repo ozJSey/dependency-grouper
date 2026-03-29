@@ -159,9 +159,10 @@ export function syncFromPackages(rootDir: string): void {
           // Existing dependency - check for version mismatch
           const group = depGroups.groups[groupName];
           if (group.dependencies && group.dependencies[dep] !== version) {
+            const oldVersion = group.dependencies[dep];
             group.dependencies[dep] = version;
             updated = true;
-            console.log(`  ↻ Updated ${dep}: ${group.dependencies[dep]} → ${version} in group "${groupName}"`);
+            console.log(`  ↻ Updated ${dep}: ${oldVersion} → ${version} in group "${groupName}"`);
           }
         }
       }
@@ -182,9 +183,10 @@ export function syncFromPackages(rootDir: string): void {
           // Existing dependency - check for version mismatch
           const group = depGroups.groups[groupName];
           if (group.devDependencies && group.devDependencies[dep] !== version) {
+            const oldVersion = group.devDependencies[dep];
             group.devDependencies[dep] = version;
             updated = true;
-            console.log(`  ↻ Updated ${dep} (dev): ${group.devDependencies[dep]} → ${version} in group "${groupName}"`);
+            console.log(`  ↻ Updated ${dep} (dev): ${oldVersion} → ${version} in group "${groupName}"`);
           }
         }
       }
