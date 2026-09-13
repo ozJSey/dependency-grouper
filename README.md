@@ -474,14 +474,19 @@ Skips `node_modules/` and `.git/` automatically.
 ### Running Tests
 
 ```bash
-npm test
+npm test              # vitest — 41 characterisation tests, run against src/
+npm run test:legacy   # builds, then the original hand-rolled runner against dist/
 ```
+
+`test/characterisation.test.ts` pins current behaviour, not intended behaviour. **A failing test
+there means the test is wrong until proven otherwise** — see the note at the top of the file.
 
 ### Testing in Example Monorepo
 
 ```bash
+npm run build
 cd example
-node ../dist/cli.js generate
+node ../dist/cli.min.js generate
 pnpm install
 ```
 
