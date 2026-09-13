@@ -7,3 +7,6 @@ dist/
 # Example files
 example/node_modules/
 example/pnpm-lock.yaml
+
+# Fixtures written by the legacy runner (test/test.js)
+test/fixtures/
