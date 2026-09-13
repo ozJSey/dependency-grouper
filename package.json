@@ -1,5 +1,5 @@
 {
-  "name": "dependency-grouper",
+  "name": "@ozjsey/dependency-grouper",
   "version": "0.3.5",
   "description": "Group and reuse dependency sets across monorepo projects (pnpm, npm, yarn)",
   "main": "dist/index.min.js",
@@ -51,5 +51,8 @@
   "dependencies": {
     "sort-package-json": "^2.10.0",
     "yaml": "^2.3.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,4 +1,4 @@
-# dependency-grouper
+# @ozjsey/dependency-grouper
 
 > Group and reuse dependency sets across monorepo projects
 
