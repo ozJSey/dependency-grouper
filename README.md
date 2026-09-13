@@ -2,7 +2,7 @@
 
 > Group and reuse dependency sets across monorepo projects
 
-[![npm version](https://img.shields.io/npm/v/dependency-grouper.svg)](https://www.npmjs.com/package/dependency-grouper)
+[![npm version](https://img.shields.io/npm/v/@ozjsey/dependency-grouper.svg)](https://www.npmjs.com/package/@ozjsey/dependency-grouper)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Works with:**
