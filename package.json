@@ -11,12 +11,16 @@
   "files": [
     "dist/*.min.js",
     "dist/*.d.ts",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "ARCHITECTURE.md"
   ],
   "scripts": {
     "build": "tsc --emitDeclarationOnly && node esbuild.config.js",
     "dev": "tsc --watch",
-    "test": "npm run build && node test/test.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:legacy": "npm run build && node test/test.js",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -46,7 +50,8 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "esbuild": "^0.27.4",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^2.1.9"
   },
   "dependencies": {
     "sort-package-json": "^2.10.0",

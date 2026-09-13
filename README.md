@@ -1,5 +1,7 @@
 # @ozjsey/dependency-grouper
 
+> **[Live demo and documentation](https://ozjsey.github.io/npm-portfolio-playground/#dependency-grouper)**
+
 > Group and reuse dependency sets across monorepo projects
 
 [![npm version](https://img.shields.io/npm/v/@ozjsey/dependency-grouper.svg)](https://www.npmjs.com/package/@ozjsey/dependency-grouper)
@@ -9,6 +11,8 @@
 - ✅ pnpm workspaces
 - ✅ npm workspaces  
 - ✅ yarn workspaces
+- ✅ **no workspace at all** — a `.dep-groups.yaml` is itself a valid root, so a flat set of sibling
+  folders that each carry their own `node_modules` can be grouped too. See the case study below.
 
 ## Problem
 
@@ -196,6 +200,143 @@ pnpm install
 
 ---
 
+## Case study: the repo this package lives in
+
+This package sits in a portfolio of twelve sibling folders, each an independent npm package with
+its own `package.json` and its own `node_modules`. There is **no root `package.json`, no
+`pnpm-workspace.yaml`, and no workspace of any kind** — the repo's own `CLAUDE.md` opens by saying
+so. On paper that is the one layout this tool does not serve.
+
+It serves it fine. `findWorkspaceRoot` checks for `.dep-groups.yaml` *before* it checks for any
+workspace marker, so the config file is a root in its own right. Dropping one into
+`playground/` was the entire setup; nothing about the repo's structure had to change.
+
+The playground — the live demo app for every package in the portfolio, 31 dependencies — is
+managed by this tool. Four groups, named after what they are for:
+
+```yaml
+# playground/.dep-groups.yaml
+groups:
+  portfolio-packages:      # the published packages the demo cards import
+    dependencies:
+      "@ozjsey/v-copy": "^1.1.0"
+      "@ozjsey/v-dropzone": "^0.1.0"
+      # …nine more
+
+  vue-runtime:
+    dependencies:
+      vue: "^3.5.13"
+
+  vue-app-tooling:         # build + typecheck
+    devDependencies:
+      "@types/node": "^26.2.0"
+      "@vitejs/plugin-vue": "^5.2.1"
+      typescript: "^5.7.0"
+      vite: "^6.0.0"
+      vue-tsc: "^2.2.0"
+
+  live-editor:             # CodeMirror + the in-browser SFC transpiler
+    devDependencies:
+      "@codemirror/autocomplete": "^6.20.0"
+      # …thirteen more
+```
+
+`package.json` names them, and `generate` writes the rest:
+
+```diff
+   "scripts": {
++    "deps": "dependency-grouper generate",
+     "dev": "vite",
++    "preinstall": "dependency-grouper generate || exit 0",
+     …
+   },
+   "devDependencies": {
+-    "@codemirror/commands": "^6.10.0",
+     "@codemirror/autocomplete": "^6.20.0",
++    "@codemirror/commands": "^6.10.0",
+     "@codemirror/lang-vue": "^0.1.3",
+-    "@codemirror/lint": "^6.8.0",
+     "@codemirror/language": "^6.12.0",
++    "@codemirror/lint": "^6.8.0",
+     …
+-  }
++  },
++  "depGroups": [
++    "portfolio-packages",
++    "vue-runtime",
++    "vue-app-tooling",
++    "live-editor"
++  ]
+ }
+```
+
+Three things that are worth taking from this rather than from the synthetic `example/` directory:
+
+1. **Every dependency belongs to exactly one group, so the auto-managed `standalone` bucket stays
+   empty.** That turns `standalone` into a useful signal: an entry showing up there means a
+   dependency was added without being classified.
+2. **`generate` is idempotent.** After the first run, a second changes nothing — which is what makes
+   it safe to put on `preinstall`.
+3. **The `preinstall` it injects is guarded**: `dependency-grouper generate || exit 0`. See the
+   warning under [Automation](#automation-optional) for why. The tool leaves any `preinstall` that
+   already mentions `dependency-grouper` alone, which is what makes the guard stick.
+
+---
+
+## Behaviour worth knowing before you adopt it
+
+Pinned by `test/characterisation.test.ts` and tabulated in
+[`ARCHITECTURE.md`](./ARCHITECTURE.md#pinned-surprises). Read at least the first two.
+
+### `.dep-groups.yaml` owns membership. `package.json` owns versions.
+
+`generate` runs sync (`package.json` → config) **before** merge (config → `package.json`). So:
+
+- Adding a dependency to a group **works** — no member declares it yet, so it flows down to all of
+  them.
+- Changing a version in a group **does not**. Sync overwrites your edit from the members before
+  merge ever reads it.
+- When two members disagree about a shared dependency, **the last one in directory-walk order
+  wins**, silently. Only that member can raise a shared version; a bump anywhere else is undone by
+  the next `generate`.
+
+To move a shared version, change it in every member — or in the last one, and let the next
+`generate` pull the rest along.
+
+### ⚠️ Do not put a published package in a group without reading this
+
+`generate` injects `"preinstall": "dependency-grouper generate"` into **every** package it manages,
+and there is no flag to turn that off. npm runs a dependency's `preinstall` **on the consumer's
+machine**, so a published library managed this way asks everyone who installs it to run
+`dependency-grouper generate`, and fails their install with `code 127` when the CLI is not on their
+PATH.
+
+The mitigation, and the only one available, is that an existing `preinstall` already containing the
+string `dependency-grouper` is left untouched. Seed a guarded form *before* the first `generate`:
+
+```json
+"preinstall": "dependency-grouper generate || exit 0"
+```
+
+That is also what a fresh clone needs even for a private package — `preinstall` runs *before*
+dependencies are installed, so the CLI is not there yet.
+
+### Everything else
+
+- **No ignore list, and the walk does not stop at a nested project root.** Vendored examples,
+  fixtures and archived packages inside the tree get managed too. The skip test is
+  `dir.includes('node_modules')` — a substring, so a directory named `my-node_modules-notes`
+  vanishes from the walk as well.
+- **Comments in `.dep-groups.yaml` are not durable.** The file is re-emitted from the parsed object
+  whenever anything changes, so annotations survive only until the next version drift.
+- **Removing an entry from a group does not remove it from members.** Merge is additive; the
+  dependency reappears in `standalone` instead.
+- **An empty `.dep-groups.yaml`** fails with `Cannot read properties of null (reading 'groups')`,
+  which does not name the file. Use `groups: {}`.
+- **`peerDependencies` and `optionalDependencies` cannot be grouped.**
+
+---
+
 ## CLI Commands
 
 ### `dependency-grouper generate`
@@ -227,7 +368,12 @@ Captures new dependencies without modifying package.json files. Faster, good for
 
 ## Automation (Optional)
 
-Add hooks to your **workspace root** `package.json` for automatic syncing:
+Add hooks to your **workspace root** `package.json` for automatic syncing.
+
+> **This one is not really optional — `generate` installs it for you.** Every package it manages
+> gets a `preinstall`, appended to an existing one unless that one already mentions
+> `dependency-grouper`. There is no opt-out flag. Seed the guarded form below *before* your first
+> `generate` if you want any say in it.
 
 ### Preinstall Hook (Recommended)
 
@@ -236,14 +382,18 @@ Runs `generate` before every `pnpm install`:
 ```json
 {
   "scripts": {
-    "preinstall": "dependency-grouper generate"
+    "preinstall": "dependency-grouper generate || exit 0"
   }
 }
 ```
 
 ✅ Always in sync  
 ✅ Team members don't need to remember  
-❌ Slower if you install frequently
+✅ `|| exit 0` keeps a **fresh clone** installable — `preinstall` runs before dependencies do, so
+the CLI is not there yet, and the unguarded form fails the install with `code 127`  
+❌ Slower if you install frequently  
+⚠️ **Never ship this on a published package.** npm runs a dependency's `preinstall` on the
+consumer's machine. See [Behaviour worth knowing](#behaviour-worth-knowing-before-you-adopt-it).
 
 ### Postinstall Hook (Lightweight Alternative)
 
@@ -398,15 +548,35 @@ code .dep-groups.yaml
 npx dependency-grouper generate
 ```
 
-### Updating a Dependency Version
+### Adding a Dependency to Every Package in a Group
 
 ```bash
-# Just update the version in .dep-groups.yaml:
-# react: ^18.2.0  →  react: ^18.3.0
+# Add it to the group in .dep-groups.yaml:
+# react:
+#   dependencies:
+#     react: ^18.2.0
+#     react-dom: ^18.2.0   ← new
 
 npx dependency-grouper generate
 pnpm install
-# All packages using the 'react' group get v18.3.0!
+# Every package using the 'react' group now has react-dom.
+```
+
+### Updating a Dependency Version
+
+> **Not by editing `.dep-groups.yaml`.** `generate` syncs `package.json` → config before it merges
+> config → `package.json`, so an edit to a version already present in a member is overwritten
+> before it is applied. Earlier versions of this README claimed otherwise; it has never worked
+> that way. See [Behaviour worth knowing](#behaviour-worth-knowing-before-you-adopt-it).
+
+```bash
+# Change the version in the member package.json files:
+#   packages/*/package.json:  "react": "^18.2.0"  →  "^18.3.0"
+#
+# Changing it in the LAST package in directory order is enough — sync lifts that
+# value into the group, and merge pushes it down to every other member:
+npx dependency-grouper generate
+pnpm install
 ```
 
 ---
