@@ -1,6 +1,6 @@
 # @ozjsey/dependency-grouper
 
-> **[Live demo and documentation](https://ozjsey.github.io/npm-portfolio-playground/#dependency-grouper)**
+> **[Live demo and documentation](https://ozjsey.github.io/npm-portfolio-playground/)**
 
 > Group and reuse dependency sets across monorepo projects
 
@@ -458,7 +458,7 @@ When you run `sync`, only **new** dependencies are added:
 ### Nested Monorepos
 
 Recursively finds ALL package.json files:
-```
+```text
 monorepo/
 ├── packages/app1/package.json          ← Found
 ├── packages/nested/deep/app2/package.json ← Found
