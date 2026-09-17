@@ -14,7 +14,7 @@ published unscoped as `dependency-grouper`, and that name was **unpublished from
 confirm is `@ozjsey/dependency-grouper@0.3.5`, published 2026-09-13. Where a commit message did
 not say what changed, the entry says so rather than guessing.
 
-## [0.3.6] — unreleased
+## [0.3.6] — 2026-09-17
 
 Everything under this heading has been sitting in the working tree since 0.3.5 shipped. The
 registry's `@ozjsey/dependency-grouper@0.3.5` (published 2026-09-13) contains **none** of it: its
