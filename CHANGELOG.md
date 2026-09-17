@@ -14,6 +14,13 @@ published unscoped as `dependency-grouper`, and that name was **unpublished from
 confirm is `@ozjsey/dependency-grouper@0.3.5`, published 2026-09-13. Where a commit message did
 not say what changed, the entry says so rather than guessing.
 
+## 0.3.7 — 2026-09-18
+
+Documentation only; no code change. The README is cut to a landing page — problem, solution,
+install, a couple of usage examples — because the playground now carries the reference: every
+option driven in a real browser rather than described in a table. Claims that could not be
+verified against the source were deleted rather than carried across.
+
 ## [0.3.6] — 2026-09-17
 
 Everything under this heading has been sitting in the working tree since 0.3.5 shipped. The
