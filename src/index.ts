@@ -420,17 +420,23 @@ export function generateDependencies(rootDir?: string): void {
     
     const merged = mergeDepGroups(packageJson, depGroups);
     
-    // Auto-inject preinstall script if missing or append to existing
-    const generateCmd = 'dependency-grouper generate';
+    // Auto-inject preinstall script if missing or append to existing.
+    // `|| exit 0` is not optional: preinstall runs BEFORE dependencies are
+    // installed, so on a fresh clone this CLI is not on PATH yet and the bare
+    // command aborts the install with code 127.
+    const guardedCmd = 'dependency-grouper generate || exit 0';
     if (!merged.scripts) {
       merged.scripts = {};
     }
     
     if (!merged.scripts.preinstall) {
-      merged.scripts.preinstall = generateCmd;
+      merged.scripts.preinstall = guardedCmd;
       console.log(`  + Added preinstall script`);
     } else if (!merged.scripts.preinstall.includes('dependency-grouper')) {
-      merged.scripts.preinstall = `${merged.scripts.preinstall} && ${generateCmd}`;
+      // The parentheses scope the guard to our command. `a && b || exit 0` is
+      // left-associative, so without them a failing `a` — the consumer's own
+      // preinstall check — would fall through to `exit 0` and be swallowed.
+      merged.scripts.preinstall = `${merged.scripts.preinstall} && (${guardedCmd})`;
       console.log(`  + Appended to existing preinstall script`);
     }
     

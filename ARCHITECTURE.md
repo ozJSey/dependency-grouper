@@ -6,7 +6,7 @@ framework, no browser — the whole surface is five exported functions and two c
 ```
 src/
 ├── cli.ts     argv → generate | sync | help. Catches, prints, sets the exit code.
-├── index.ts   the entire library (452 lines)
+├── index.ts   the entire library (458 lines)
 └── types.ts   DepGroups, PackageJson, DependencySet
 dist/
 ├── cli.min.js    bin: dependency-grouper, dep-grouper
@@ -52,10 +52,11 @@ evidence than an assertion written afterwards.
 
 | Behaviour | Where | Consequence |
 |---|---|---|
+| Bootstrap shares one flat `standalone` bucket between every non-root package | `syncFromPackages` + the auto-populate in `generateDependencies` | The README's former "Recommended" path (`"depGroups": []` everywhere, then `generate`) gives every sub-package the **union** of all sub-packages' dependencies. Because merge is additive it is **not reversible by the tool** — reorganising the groups afterwards leaves the strays in the manifests and re-captures them into `standalone`. Draft with `sync` and assign real groups before the first `generate`. |
 | `.dep-groups.yaml` alone marks a root — no workspace needed | `findWorkspaceRoot`, checked *first* | A flat set of sibling folders can be grouped. Undocumented; the README and CLI help both say "workspaces". |
 | Editing a version in the config is reverted | the invariant above | The README's "Updating a Dependency Version" recipe does not work. |
 | Member-vs-member version conflicts resolve by directory walk order | `syncFromPackages` | Only the alphabetically last member can raise a shared version; a bump anywhere else is silently undone next run. `mergeDepGroups` warns on group-vs-group conflicts — this path does not. |
-| A `preinstall` hook is injected into every managed package, with no opt-out | `generateDependencies` | For a **published** package this is severe: npm runs a dependency's `preinstall` on the consumer's machine, so the library asks every installer to run `dependency-grouper generate` and fails their install with code 127 when it is not on their PATH. The only lever is that an existing `preinstall` already containing the string `dependency-grouper` is left alone. |
+| A `preinstall` hook is injected into every managed package — the workspace root included — with no opt-out | `generateDependencies` | npm runs a dependency's `preinstall` on the consumer's machine, so a **published** package managed by this tool ships that hook to every installer. Since 0.3.6 the injected command is guarded (`… \|\| exit 0`) so it can no longer *fail* an install; through 0.3.5 it was bare and exited 127 off a fresh clone. The only opt-out is still that an existing `preinstall` mentioning `dependency-grouper` is left alone. |
 | The walk has no ignore list and no nested-root awareness | `findPackageJsonFiles` | Vendored examples, fixtures and archived packages inside the tree are managed too. The skip test is `dir.includes('node_modules')`, a substring — a directory named `my-node_modules-notes` also disappears. |
 | Rewriting the config discards hand-written comments | `syncFromPackages` writer | It re-emits from the parsed object rather than editing. Annotations survive only until the next version drift. |
 | Removing an entry from a group does not remove it from members | merge is additive | It reappears in the auto-managed `standalone` bucket instead. |
@@ -67,7 +68,7 @@ evidence than an assertion written afterwards.
 
 The repo rule is `src/` split into single-purpose modules behind a thin re-export entry, because
 most people copy the source rather than install it. **This package does not comply**: `index.ts`
-is one 452-line file holding root discovery, the directory walk, the YAML reader, the YAML
+is one 458-line file holding root discovery, the directory walk, the YAML reader, the YAML
 *writer* (hand-rolled string building, not `yaml.stringify`), the merge, and the orchestrator.
 
 The natural split, when it is done, is along the invariant above:
@@ -90,8 +91,10 @@ makes that refactor safe, and it has to be trusted first. See the report attache
 
 ## Testing
 
-- `npm test` — `vitest run`, 41 characterisation tests against `src/`, never `dist/`. Each creates
-  its own `mkdtemp` root and deletes it afterwards.
+- `npm test` — `vitest run`, 45 characterisation tests against `src/`, never `dist/`. Each creates
+  its own `mkdtemp` root and deletes it afterwards. One of them shells out to `/bin/sh` to check
+  the injected `preinstall` really has the exit status it claims, rather than asserting on the
+  string alone.
 - `npm run test:legacy` — the original hand-rolled runner (`test/test.js`, 19 assertions). It
   builds first and tests `dist/index.min.js`, so it also serves as the build smoke test. Its
   fixtures land in `test/fixtures/` and are gitignored.

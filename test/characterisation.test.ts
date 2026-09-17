@@ -18,6 +18,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -31,6 +32,9 @@ import {
 } from '../src/index'
 
 let root: string
+
+/** The preinstall `generate` installs for you, guarded so a fresh clone survives it. */
+const GUARDED = 'dependency-grouper generate || exit 0'
 
 beforeEach(() => {
   root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dep-grouper-')))
@@ -489,19 +493,92 @@ describe('generateDependencies', () => {
     expect(fs.readFileSync(path.join(root, 'packages/opted-out/package.json'), 'utf-8')).toBe(before)
   })
 
+
+  describe('the bootstrap the README calls "Recommended"', () => {
+    it('SURPRISING: bootstrap gives every sub-package every other sub-package\'s dependencies', () => {
+      // README "Option A": put `"depGroups": []` in every manifest and run
+      // generate. Step 1 pours every non-root package's dependencies into the
+      // one flat `standalone` bucket; step 2 auto-populates every non-root
+      // package with `["standalone"]` and merges that bucket back down. So a
+      // React app acquires Vue and a Vue app acquires React, silently, and the
+      // next install pulls both into both.
+      pkg('.', { name: 'ws', depGroups: [], workspaces: ['packages/*'] })
+      pkg('packages/react-app', { name: 'react-app', depGroups: [], dependencies: { react: '^18.2.0' } })
+      pkg('packages/vue-app', { name: 'vue-app', depGroups: [], dependencies: { vue: '^3.5.17' } })
+
+      generateDependencies(root)
+
+      expect(readPkg('packages/react-app').dependencies).toEqual({ react: '^18.2.0', vue: '^3.5.17' })
+      expect(readPkg('packages/vue-app').dependencies).toEqual({ react: '^18.2.0', vue: '^3.5.17' })
+    })
+
+    it('SURPRISING: the README\'s own recovery does not undo it — merge is additive', () => {
+      // README steps 4-6 tell you to split `standalone` into real groups,
+      // repoint `depGroups`, and regenerate. That never removes anything: the
+      // stray dependency stays in the manifest and is re-captured into
+      // `standalone` on the next run. Bootstrap contamination is permanent
+      // unless the member manifests are edited by hand.
+      pkg('.', { name: 'ws', depGroups: [], workspaces: ['packages/*'] })
+      pkg('packages/react-app', { name: 'react-app', depGroups: [], dependencies: { react: '^18.2.0' } })
+      pkg('packages/vue-app', { name: 'vue-app', depGroups: [], dependencies: { vue: '^3.5.17' } })
+      generateDependencies(root)
+
+      writeGroups(
+        'groups:\n  react:\n    dependencies:\n      react: "^18.2.0"\n\n  vue:\n    dependencies:\n      vue: "^3.5.17"\n',
+      )
+      for (const [dir, groups] of [
+        ['packages/react-app', ['react']],
+        ['packages/vue-app', ['vue']],
+      ] as const) {
+        const file = path.join(root, dir, 'package.json')
+        const manifest = JSON.parse(fs.readFileSync(file, 'utf-8'))
+        manifest.depGroups = groups
+        fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n')
+      }
+
+      generateDependencies(root)
+
+      expect(readPkg('packages/react-app').dependencies.vue).toBe('^3.5.17')
+      expect(readPkg('packages/vue-app').dependencies.react).toBe('^18.2.0')
+      expect(loadDepGroups(root).groups.standalone.dependencies).toEqual({
+        react: '^18.2.0',
+        vue: '^3.5.17',
+      })
+    })
+  })
+
   describe('the preinstall hook it installs for you', () => {
     it('SURPRISING: injects one into every managed package, with no way to opt out', () => {
-      // There is no flag for this. It matters most for a *published* package:
-      // npm runs a dependency's preinstall on the consumer's machine, so a
-      // library grouped by this tool asks every one of its installers to run
-      // `dependency-grouper generate`, and fails their install with code 127
-      // when the binary is not on their PATH.
+      // There is no flag for this, and it reaches the workspace root too. It
+      // matters most for a *published* package: npm runs a dependency's
+      // preinstall on the consumer's machine, so a library grouped by this
+      // tool asks every one of its installers to run `dependency-grouper
+      // generate`. The guard below is what keeps that from failing their
+      // install outright; it does not stop the hook from being installed.
+      writeGroups('groups:\n  react:\n    dependencies:\n      react: "^18.2.0"\n')
+      pkg('.', { name: 'ws', depGroups: ['react'], workspaces: ['packages/*'] })
+      pkg('packages/app', { name: 'app', depGroups: ['react'] })
+
+      generateDependencies(root)
+
+      expect(readPkg('packages/app').scripts.preinstall).toBe(GUARDED)
+      expect(readPkg('.').scripts.preinstall).toBe(GUARDED)
+    })
+
+    it('guards the injected hook so a fresh clone still installs', () => {
+      // CHANGED in 0.3.6, deliberately. Through 0.3.5 the tool injected the
+      // bare `dependency-grouper generate`. preinstall runs *before*
+      // dependencies are installed, so on a fresh clone the CLI is not on
+      // PATH yet and npm aborts the install with `code 127` — the tool bricked
+      // its own workspace root, and the README already told readers to seed
+      // the `|| exit 0` form by hand to avoid exactly that. What is given up:
+      // a genuinely broken `generate` no longer fails the install loudly.
       writeGroups('groups:\n  react:\n    dependencies:\n      react: "^18.2.0"\n')
       pkg('packages/app', { name: 'app', depGroups: ['react'] })
 
       generateDependencies(root)
 
-      expect(readPkg('packages/app').scripts.preinstall).toBe('dependency-grouper generate')
+      expect(readPkg('packages/app').scripts.preinstall).toBe('dependency-grouper generate || exit 0')
     })
 
     it('appends to an existing preinstall that does not already mention the tool', () => {
@@ -511,8 +588,22 @@ describe('generateDependencies', () => {
       generateDependencies(root)
 
       expect(readPkg('packages/app').scripts.preinstall).toBe(
-        'node ./check.js && dependency-grouper generate',
+        'node ./check.js && (dependency-grouper generate || exit 0)',
       )
+    })
+
+    it('parenthesises the guard so a failing pre-existing preinstall still fails the install', () => {
+      // `a && b || exit 0` is left-associative: when `a` fails the `&&` short-
+      // circuits and `|| exit 0` runs, so the consumer's own preinstall check
+      // would be silently swallowed. The parentheses scope the guard to this
+      // tool's command only. Proven against /bin/sh, not just asserted.
+      writeGroups('groups:\n  react:\n    dependencies:\n      react: "^18.2.0"\n')
+      pkg('packages/app', { name: 'app', depGroups: ['react'], scripts: { preinstall: 'false' } })
+
+      generateDependencies(root)
+
+      const script = readPkg('packages/app').scripts.preinstall
+      expect(() => execFileSync('sh', ['-c', script], { stdio: 'ignore' })).toThrow()
     })
 
     it('leaves any preinstall that already contains "dependency-grouper" untouched', () => {

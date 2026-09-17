@@ -384,7 +384,7 @@ function testPreinstallScriptInjection() {
   
   const pkg1 = JSON.parse(fs.readFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), 'utf-8'));
   assert.ok(pkg1.scripts, 'Should create scripts object');
-  assert.strictEqual(pkg1.scripts.preinstall, 'dependency-grouper generate', 'Should inject preinstall');
+  assert.strictEqual(pkg1.scripts.preinstall, 'dependency-grouper generate || exit 0', 'Should inject a guarded preinstall');
   
   // Test 2: Existing preinstall (different command)
   fs.writeFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
@@ -398,7 +398,7 @@ function testPreinstallScriptInjection() {
   generateDependencies(scriptTestDir);
   
   const pkg2 = JSON.parse(fs.readFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), 'utf-8'));
-  assert.strictEqual(pkg2.scripts.preinstall, 'echo "hello" && dependency-grouper generate', 'Should append to existing');
+  assert.strictEqual(pkg2.scripts.preinstall, 'echo "hello" && (dependency-grouper generate || exit 0)', 'Should append a parenthesised guard to existing');
   
   // Test 3: Preinstall already has dependency-grouper
   fs.writeFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), JSON.stringify({
@@ -411,8 +411,11 @@ function testPreinstallScriptInjection() {
   
   generateDependencies(scriptTestDir);
   
+  // Deliberately still the UNGUARDED string: this is the no-churn guarantee for
+  // everyone who ran <= 0.3.5. A manifest that already mentions the tool is
+  // never rewritten, so 0.3.6 changes nothing on any existing tree.
   const pkg3 = JSON.parse(fs.readFileSync(path.join(scriptTestDir, 'packages', 'app1', 'package.json'), 'utf-8'));
-  assert.strictEqual(pkg3.scripts.preinstall, 'dependency-grouper generate', 'Should not duplicate');
+  assert.strictEqual(pkg3.scripts.preinstall, 'dependency-grouper generate', 'Should not duplicate or rewrite');
   
   console.log('✓ Preinstall script injection works correctly');
 }

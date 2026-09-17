@@ -90,55 +90,71 @@ Run `dependency-grouper generate` and it merges the groups with automatic sortin
 
 ## Quick Start
 
-### Option A: Bootstrap from Existing Monorepo (Recommended)
+### Option A: Bootstrap from an existing monorepo
 
-If you already have a monorepo with dependencies:
+> ### ⛔ Do not run `generate` on a tree whose packages have different dependencies
+>
+> `"depGroups": []` everywhere plus `generate` was this README's "Recommended" path for thirteen
+> releases. **It cross-contaminates every package**, and it does not undo.
+>
+> Bootstrap pours *every* non-root package's dependencies into one flat `standalone` group, then
+> hands that whole group back to *every* non-root package. A React app and a Vue app in the same
+> tree each come out depending on both React and Vue, and the next install pulls both into both:
+>
+> ```console
+> $ npx dependency-grouper generate         # react-app declared only react; vue-app only vue
+> $ cat packages/react-app/package.json
+> { "dependencies": { "react": "^18.2.0", "react-dom": "^18.2.0", "vue": "^3.5.17" }, … }
+> $ cat packages/vue-app/package.json
+> { "dependencies": { "react": "^18.2.0", "react-dom": "^18.2.0", "vue": "^3.5.17" }, … }
+> ```
+>
+> And **the reorganise-then-regenerate recovery this README used to print does not remove them.**
+> Merge is additive: splitting `standalone` into `react` and `vue` groups and repointing
+> `depGroups` leaves `vue` sitting in `react-app` and re-captures it into `standalone` on the next
+> run. The only way back is to edit each member's `dependencies` by hand.
+>
+> Pinned by `test/characterisation.test.ts` → *the bootstrap the README calls "Recommended"*.
+>
+> Bootstrap is still fine when you know the tree already shares one dependency set, or on a
+> throwaway branch you can `git checkout --` afterwards.
+
+**Use `sync` instead.** It writes the same draft config and never touches a `package.json`:
 
 ```bash
 # 1. Install at workspace root
 pnpm add -D dependency-grouper
 
-# 2. Add "depGroups": [] to ALL package.json files
-# ├── package.json          → "depGroups": []
-# └── packages/
-#     ├── app1/package.json → "depGroups": []
-#     └── app2/package.json → "depGroups": []
+# 2. Draft .dep-groups.yaml from what your packages already declare.
+#    This command only ever writes .dep-groups.yaml — no manifest is modified.
+npx dependency-grouper sync
 
-# 3. Run generate (does everything automatically):
-npx dependency-grouper generate
-```
-
-**What just happened:**
-1. ✅ Created `.dep-groups.yaml` with all your dependencies organized
-2. ✅ Root dependencies → `root` group, sub-packages → `standalone` group  
-3. ✅ Auto-populated `depGroups: ["root"]` or `["standalone"]` in all files
-4. ✅ Injected `preinstall` script for automatic sync
-
-**Next steps:**
-```bash
-# 4. Review and reorganize the generated .dep-groups.yaml
+# 3. Edit the draft into real groups, and DELETE the `standalone` bucket it drafted:
 code .dep-groups.yaml
-
-# Example: Split 'standalone' into specific groups:
 # groups:
-#   standalone:
-#     dependencies:
-#       axios: ^1.6.0  → Move to 'shared-utils'
-#   react:             ← New group
-#     dependencies:
-#       react: ^18.2.0
-#       react-dom: ^18.2.0
+#   root:
+#     devDependencies: { typescript: ^5.3.3 }
+#   react:                          ← was in `standalone`
+#     dependencies: { react: ^18.2.0, react-dom: ^18.2.0 }
+#   vue:                            ← was in `standalone`
+#     dependencies: { vue: ^3.5.17 }
 
-# 5. Update package.json files to use new groups:
-# packages/react-app/package.json:
-# "depGroups": ["react", "shared-utils"]
+# 4. Name the real groups in each package.json — never `[]`, never `standalone`:
+# packages/react-app/package.json → "depGroups": ["react"]
+# packages/vue-app/package.json   → "depGroups": ["vue"]
 
-# 6. Regenerate to apply changes:
+# 5. Now generate. Each package gets its own groups and nothing else.
 npx dependency-grouper generate
-
-# 7. Install and you're done!
 pnpm install
 ```
+
+**What `generate` did:**
+1. ✅ Merged each package's named groups into its `dependencies` / `devDependencies`, sorted
+2. ✅ Lifted any version a member had drifted on back up into the group
+3. ✅ Captured anything no named group covers into `standalone`  — an entry there means a
+   dependency was added without being classified
+4. ✅ Injected a guarded `preinstall` (`dependency-grouper generate || exit 0`) — see
+   [Automation](#automation-optional)
 
 ### Option B: Fresh Setup (New Monorepo)
 
@@ -277,9 +293,9 @@ Three things that are worth taking from this rather than from the synthetic `exa
    dependency was added without being classified.
 2. **`generate` is idempotent.** After the first run, a second changes nothing — which is what makes
    it safe to put on `preinstall`.
-3. **The `preinstall` it injects is guarded**: `dependency-grouper generate || exit 0`. See the
-   warning under [Automation](#automation-optional) for why. The tool leaves any `preinstall` that
-   already mentions `dependency-grouper` alone, which is what makes the guard stick.
+3. **The `preinstall` it injects is guarded**: `dependency-grouper generate || exit 0`. Here it
+   was seeded by hand, because the tool wrote the unguarded form until 0.3.6; it now writes this
+   exact string itself. See the warning under [Automation](#automation-optional) for why.
 
 ---
 
@@ -287,6 +303,13 @@ Three things that are worth taking from this rather than from the synthetic `exa
 
 Pinned by `test/characterisation.test.ts` and tabulated in
 [`ARCHITECTURE.md`](./ARCHITECTURE.md#pinned-surprises). Read at least the first two.
+
+### Bootstrap shares one `standalone` bucket between every package, permanently
+
+`"depGroups": []` everywhere plus `generate` gives every sub-package the union of all of them, and
+merge is additive so reorganising afterwards never takes anything back out. Draft with `sync` and
+assign real groups before the first `generate` — full detail and the recovery under
+[Option A](#option-a-bootstrap-from-an-existing-monorepo).
 
 ### `.dep-groups.yaml` owns membership. `package.json` owns versions.
 
@@ -305,21 +328,25 @@ To move a shared version, change it in every member — or in the last one, and 
 
 ### ⚠️ Do not put a published package in a group without reading this
 
-`generate` injects `"preinstall": "dependency-grouper generate"` into **every** package it manages,
+`generate` injects a `preinstall` into **every** package it manages, the workspace root included,
 and there is no flag to turn that off. npm runs a dependency's `preinstall` **on the consumer's
 machine**, so a published library managed this way asks everyone who installs it to run
-`dependency-grouper generate`, and fails their install with `code 127` when the CLI is not on their
-PATH.
+`dependency-grouper generate`.
 
-The mitigation, and the only one available, is that an existing `preinstall` already containing the
-string `dependency-grouper` is left untouched. Seed a guarded form *before* the first `generate`:
+Since **0.3.6** the injected command is guarded, so it no longer *fails* anyone's install:
 
 ```json
 "preinstall": "dependency-grouper generate || exit 0"
 ```
 
-That is also what a fresh clone needs even for a private package — `preinstall` runs *before*
-dependencies are installed, so the CLI is not there yet.
+Through 0.3.5 it was the bare `dependency-grouper generate`, which exits `127` when the CLI is not
+on PATH and takes the install down with it — including the first `install` after a fresh clone of
+your own repo, because `preinstall` runs *before* dependencies are installed. If a manifest of
+yours still carries the unguarded form, `generate` will not rewrite it (any `preinstall` mentioning
+`dependency-grouper` is left alone); add the `|| exit 0` yourself.
+
+The guard makes the hook harmless, not absent. **A published package should not be managed by this
+tool at all** unless you are willing to ship a `preinstall` to every consumer.
 
 ### Everything else
 
@@ -346,8 +373,10 @@ dependencies are installed, so the CLI is not there yet.
 1. Scans all package.json files  
 2. Updates `.dep-groups.yaml` with new dependencies
 3. Merges group dependencies back into package.json files
-4. Auto-populates empty `depGroups: []` arrays
-5. Injects preinstall scripts
+4. Auto-populates empty `depGroups: []` arrays — `["root"]` at the root, `["standalone"]` below
+   it, which is the cross-contaminating path described under
+   [Option A](#option-a-bootstrap-from-an-existing-monorepo)
+5. Injects a guarded `preinstall` into every package it touches
 
 **When to use:**
 - Initial setup
@@ -372,8 +401,8 @@ Add hooks to your **workspace root** `package.json` for automatic syncing.
 
 > **This one is not really optional — `generate` installs it for you.** Every package it manages
 > gets a `preinstall`, appended to an existing one unless that one already mentions
-> `dependency-grouper`. There is no opt-out flag. Seed the guarded form below *before* your first
-> `generate` if you want any say in it.
+> `dependency-grouper`. There is no opt-out flag. The form below is exactly what it writes, so a
+> manifest you seed by hand and one `generate` writes are byte-identical.
 
 ### Preinstall Hook (Recommended)
 
@@ -391,6 +420,10 @@ Runs `generate` before every `pnpm install`:
 ✅ Team members don't need to remember  
 ✅ `|| exit 0` keeps a **fresh clone** installable — `preinstall` runs before dependencies do, so
 the CLI is not there yet, and the unguarded form fails the install with `code 127`  
+✅ Appending to a `preinstall` you already have parenthesises the guard —
+`your-check && (dependency-grouper generate || exit 0)` — so a failure of *your* command still
+fails the install. Without the parentheses `&&`/`||` associate left and `|| exit 0` would swallow
+it  
 ❌ Slower if you install frequently  
 ⚠️ **Never ship this on a published package.** npm runs a dependency's `preinstall` on the
 consumer's machine. See [Behaviour worth knowing](#behaviour-worth-knowing-before-you-adopt-it).
@@ -454,6 +487,11 @@ When you run `sync`, only **new** dependencies are added:
 
 ✅ Prevents polluting shared groups with package-specific dependencies  
 ✅ Only unmanaged dependencies go to "standalone" group
+
+⚠️ **This holds only once every package names real groups.** While a package is on
+`["standalone"]` — which is what bootstrap assigns — "unmanaged" means *unmanaged by anyone*, and
+the one flat `standalone` bucket is shared by every such package. That is the cross-contamination
+described under [Option A](#option-a-bootstrap-from-an-existing-monorepo).
 
 ### Nested Monorepos
 
@@ -593,7 +631,10 @@ MIT
 ## Troubleshooting
 
 **Q: `.dep-groups.yaml` wasn't created**  
-A: Add `"depGroups": []` to at least one package.json, then run `generate`.
+A: Run `dependency-grouper sync`. It drafts the file from what your packages already declare and
+writes no `package.json`. (Adding `"depGroups": []` everywhere and running `generate` also creates
+it — and cross-contaminates every package; see
+[Option A](#option-a-bootstrap-from-an-existing-monorepo).)
 
 **Q: Dependencies not merging**  
 A: Check that:
@@ -603,8 +644,11 @@ A: Check that:
 
 **Q: How to use AI to organize dependencies?**  
 A:
-1. Run `npx dependency-grouper generate` → creates `.dep-groups.yaml`
+1. Run `npx dependency-grouper sync` → drafts `.dep-groups.yaml`, touches no `package.json`
 2. Give `.dep-groups.yaml` to AI: *"Reorganize into logical groups (react, testing, build-tools, etc.)"*
-3. AI rewrites with better organization
-4. Update `depGroups` in package.json files to use new group names
+3. AI rewrites with better organization; delete the drafted `standalone` bucket
+4. Set `depGroups` in each package.json to the new group names
 5. Run `npx dependency-grouper generate` to apply
+
+Do **not** run `generate` before step 4 — until each package names its own groups it is on
+`standalone`, and every package shares that one bucket.
