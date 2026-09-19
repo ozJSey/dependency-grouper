@@ -3,7 +3,10 @@
 Define a dependency set once, name it in a `package.json`, and every project that names it gets the
 same versions.
 
-[![npm version](https://img.shields.io/npm/v/@ozjsey/dependency-grouper.svg)](https://www.npmjs.com/package/@ozjsey/dependency-grouper)
+[![npm](https://img.shields.io/npm/v/@ozjsey/dependency-grouper.svg)](https://www.npmjs.com/package/@ozjsey/dependency-grouper)
+![license MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![gzipped 2.52 KiB](https://img.shields.io/badge/gzipped-2.52%20KiB-blue.svg)
+![dependencies 2](https://img.shields.io/badge/dependencies-2-blue.svg)
 
 > A CLI that rewrites `package.json` files on disk has no honest browser demo, so it has no tab in
 > the [npm portfolio playground](https://ozjsey.github.io/npm-portfolio-playground/) — but that
