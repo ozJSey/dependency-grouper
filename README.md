@@ -128,7 +128,7 @@ flows down to all of them.
 ## Everything else
 
 [`ARCHITECTURE.md`](./ARCHITECTURE.md#pinned-surprises) tabulates every surprising behaviour this
-tool has, each pinned by a characterisation test naming the function it comes from: what the walk
+tool has, pinned by characterisation tests naming the function each comes from: what the walk
 does and does not skip, what happens to comments in the config, why removing an entry from a group
 does not remove it from members, and which dependency fields cannot be grouped at all.
 [`CHANGELOG.md`](./CHANGELOG.md) is the version history.

@@ -14,6 +14,20 @@ published unscoped as `dependency-grouper`, and that name was **unpublished from
 confirm is `@ozjsey/dependency-grouper@0.3.5`, published 2026-09-13. Where a commit message did
 not say what changed, the entry says so rather than guessing.
 
+## 0.3.8 — 2026-09-20
+
+Documentation truth, found by auditing every behavioural claim in the README against the source.
+
+### Fixed
+
+- **The README claimed every row of `ARCHITECTURE.md`'s pinned-surprises table was "each pinned by a
+  characterisation test".** Ten of the eleven were. The eleventh — *"`peerDependencies` and
+  `optionalDependencies` are invisible"* — had none, so the word "each" was false. Rather than
+  soften the promise and leave the gap, the missing test now exists and pins the behaviour: a
+  package whose dependencies live in those two fields contributes nothing at all. It carries its own
+  vacuity guard (a real `dependencies` entry that MUST be captured), so it cannot pass on a sync
+  that did nothing. Suite 45 → 46.
+
 ## 0.3.7 — 2026-09-18
 
 Documentation only; no code change. The README is cut to a landing page — problem, solution,

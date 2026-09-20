@@ -293,6 +293,30 @@ describe('syncFromPackages', () => {
     })
   })
 
+  /**
+   * The eleventh row of ARCHITECTURE.md's pinned-surprises table — "peerDependencies
+   * and optionalDependencies are invisible" — was the one row with no test behind it,
+   * while the README advertised every row as pinned by one. The behaviour is real
+   * (`DependencySet` in src/types.ts names only dependencies and devDependencies),
+   * so this pins it rather than changing it: a package whose deps live entirely in
+   * those two fields contributes nothing at all, not even an empty group.
+   */
+  it('peerDependencies and optionalDependencies are invisible — they are never captured', () => {
+    pkg('packages/lib', {
+      name: 'lib',
+      peerDependencies: { vue: '^3.5.0' },
+      optionalDependencies: { fsevents: '^2.3.0' },
+      dependencies: { react: '^18.2.0' },
+    })
+
+    syncFromPackages(root)
+
+    const written = JSON.stringify(loadDepGroups(root))
+    expect(written).not.toContain('vue')
+    expect(written).not.toContain('fsevents')
+    expect(written).toContain('react')
+  })
+
   it('never captures workspace: protocol dependencies', () => {
     pkg('packages/app', { name: 'app', dependencies: { react: '^18.2.0', '@repo/ui': 'workspace:*' } })
 
